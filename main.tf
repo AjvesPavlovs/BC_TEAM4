@@ -69,7 +69,7 @@ resource "aws_security_group" "slice_sip_sg" {
 
 # Look up the pre-existing IAM role to bypass user permission restrictions
 data "aws_iam_role" "ssm_role" {
-  name = "ec2_ssm_role_capstone"
+  name = "Bootcamp-Instance-Profile"
 }
 
 resource "aws_iam_instance_profile" "ssm_profile" {
