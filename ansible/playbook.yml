@@ -1,0 +1,44 @@
+
+---
+- name: Configure Slice and Sip EC2 server
+  hosts: localhost
+  connection: local
+  become: true
+
+  tasks:
+    - name: Install required packages
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - git
+          - curl
+        state: present
+        update_cache: true
+
+    - name: Start and enable Docker
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Verify Docker CLI
+      ansible.builtin.command: docker --version
+      register: docker_version
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Verify Git
+      ansible.builtin.command: git --version
+      register: git_version
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Verify Docker daemon
+      ansible.builtin.command: docker info
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Display configuration result
+      ansible.builtin.debug:
+        msg: "Slice and Sip server dependencies are configured"
+      when: not ansible_check_mode
