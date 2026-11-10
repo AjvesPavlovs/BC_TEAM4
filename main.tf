@@ -67,14 +67,14 @@ resource "aws_security_group" "slice_sip_sg" {
   }
 }
 
-# Look up the pre-existing IAM role to bypass user permission restrictions
+# Look up the pre-existing IAM role
 data "aws_iam_role" "ssm_role" {
   name = "Bootcamp-Instance-Profile"
 }
 
-resource "aws_iam_instance_profile" "ssm_profile" {
-  name = "ec2_ssm_profile_capstone"
-  role = data.aws_iam_role.ssm_role.name
+# Look up the pre-existing IAM instance profile to bypass user permissions
+data "aws_iam_instance_profile" "ssm_profile" {
+  name = "Bootcamp-Instance-Profile"
 }
 
 # EC2 Instance configured for SSM access
@@ -82,7 +82,7 @@ resource "aws_instance" "slice_sip_server" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = "t3.medium"
   vpc_security_group_ids = [aws_security_group.slice_sip_sg.id]
-  iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
+  iam_instance_profile   = data.aws_iam_instance_profile.ssm_profile.name
   user_data              = file("user_data.sh")
 
   root_block_device {
