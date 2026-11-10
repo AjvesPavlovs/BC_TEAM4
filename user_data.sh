@@ -7,6 +7,5 @@ systemctl start docker
 systemctl enable docker
 usermod -aG docker ubuntu
 
-# Configure SSH daemon to listen on port 443
-echo "Port 443" >> /etc/ssh/sshd_config
-systemctl restart ssh
+# Ensure snap/SSM agent is active (Ubuntu 22.04 includes snap, SSM agent can also be installed via snap if needed)
+systemctl enable snapd

@@ -1,5 +1,5 @@
 # ==============================================================================
-# SLICE & SIP CAPSTONE - Ubuntu Infrastructure (eu-west-1)
+# SLICE & IPs CAPSTONE - SSM Only Infrastructure (Ubuntu, eu-west-1)
 # ==============================================================================
 
 terraform {
@@ -33,10 +33,10 @@ data "aws_ami" "ubuntu" {
   owners = ["099720109477"] # Canonical
 }
 
-# Security Group: Strict Lockdown (Ports 80 and 443)
+# Security Group: HTTP/HTTPS only (No inbound SSH ports needed since SSM uses outbound HTTPS)
 resource "aws_security_group" "slice_sip_sg" {
-  name        = "slice-sip-strict-sg"
-  description = "Capstone SG: Allow only HTTP (80) and HTTPS/SSH (443)"
+  name        = "slice-sip-ssm-sg"
+  description = "Capstone SG: SSM Managed Instance"
   vpc_id      = data.aws_vpc.default.id
 
   ingress {
@@ -48,7 +48,7 @@ resource "aws_security_group" "slice_sip_sg" {
   }
 
   ingress {
-    description = "Public HTTPS and Admin SSH"
+    description = "Public HTTPS"
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
@@ -63,18 +63,45 @@ resource "aws_security_group" "slice_sip_sg" {
   }
 
   tags = {
-    Name = "SliceAndSip-SG"
+    Name = "SliceAndSip-SSM-SG"
   }
 }
 
-# EC2 Instance: Ubuntu t3.medium
+# IAM Role to allow AWS Systems Manager (SSM) agent to connect
+resource "aws_iam_role" "ssm_role" {
+  name = "ec2_ssm_role_capstone"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment "ssm_server" {
+  role       = aws_iam_role.ssm_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_instance_profile" "ssm_profile" {
+  name = "ec2_ssm_profile_capstone"
+  role = aws_iam_role.ssm_role.name
+}
+
+# EC2 Instance configured for SSM access
 resource "aws_instance" "slice_sip_server" {
-  ami           = data.aws_ami.ubuntu.id
-  instance_type = "t3.medium"
-  
+  ami                  = data.aws_ami.ubuntu.id
+  instance_type        = "t3.medium"
   vpc_security_group_ids = [aws_security_group.slice_sip_sg.id]
-  key_name               = "slice-sip-key" # <--- Update to your exact key name in eu-west-1
-  user_data              = file("user_data.sh")
+  iam_instance_profile = aws_iam_instance_profile.ssm_profile.name
+  user_data            = file("user_data.sh")
 
   root_block_device {
     volume_size = 20
