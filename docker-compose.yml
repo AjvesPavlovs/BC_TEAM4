@@ -1,0 +1,13 @@
+version: '3.8'
+services:
+  app:
+    image: aivisp/slice.sip.app.v1.0:latest
+    ports:
+      - "80:80"
+    logging:
+      driver: "awslogs"
+      options:
+        awslogs-region: "eu-central-1"
+        awslogs-group: "/ec2/slice.sip.app.v1.0"
+        awslogs-stream: "app-runner"
+        awslogs-create-group: "true"
