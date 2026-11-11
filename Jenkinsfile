@@ -10,18 +10,22 @@ pipeline {
         string(
             name: 'DOCKERHUB_REPO',
             defaultValue: 'aivisp/slice.sip.app.v1.0',
-            description: 'Docker Hub repozitorijs, piemēram, lietotajvards/slice-sip'
+            description: 'Docker Hub repository'
         )
         string(
-            name: 'EC2_INSTANCE_ID',
-            defaultValue: '',
-            description: 'EC2 instance ID no terraform output instance_id'
+            name: 'ECS_CLUSTER',
+            defaultValue: 'slice-sip-cluster',
+            description: 'ECS cluster name from Terraform'
+        )
+        string(
+            name: 'ECS_SERVICE',
+            defaultValue: 'slice-sip-service',
+            description: 'ECS service name from Terraform'
         )
     }
 
     environment {
         AWS_REGION = 'eu-west-1'
-    
     }
 
     stages {
@@ -29,14 +33,9 @@ pipeline {
             steps {
                 sh '''
                     set -eu
-                    test -n "$DOCKERHUB_REPO" || {
-                        echo "Aizpildi parametru DOCKERHUB_REPO."
-                        exit 1
-                    }
-                    test -n "$EC2_INSTANCE_ID" || {
-                        echo "Aizpildi parametru EC2_INSTANCE_ID."
-                        exit 1
-                    }
+                    test -n "$DOCKERHUB_REPO"
+                    test -n "$ECS_CLUSTER"
+                    test -n "$ECS_SERVICE"
                 '''
             }
         }
@@ -79,56 +78,23 @@ pipeline {
             }
         }
 
-        stage('Deploy to EC2 through SSM') {
+        stage('Deploy to ECS Fargate') {
             steps {
                 sh '''
                     set -eu
 
-                    IMAGE="$DOCKERHUB_REPO:$BUILD_NUMBER"
-                    PARAMETERS=$(printf \
-                      '{"commands":["docker pull %s","docker rm -f slice-sip || true","docker run -d --name slice-sip --restart unless-stopped -p 80:80 %s"]}' \
-                      "$IMAGE" "$IMAGE")
-
-                    COMMAND_ID=$(aws ssm send-command \
+                    aws ecs update-service \
                       --region "$AWS_REGION" \
-                      --instance-ids "$EC2_INSTANCE_ID" \
-                      --document-name "AWS-RunShellScript" \
-                      --comment "Deploy Slice & Sip build $BUILD_NUMBER" \
-                      --parameters "$PARAMETERS" \
-                      --query "Command.CommandId" \
-                      --output text)
+                      --cluster "$ECS_CLUSTER" \
+                      --service "$ECS_SERVICE" \
+                      --force-new-deployment
 
-                    echo "SSM command: $COMMAND_ID"
+                    aws ecs wait services-stable \
+                      --region "$AWS_REGION" \
+                      --cluster "$ECS_CLUSTER" \
+                      --services "$ECS_SERVICE"
 
-                    for attempt in $(seq 1 30); do
-                        STATUS=$(aws ssm get-command-invocation \
-                          --region "$AWS_REGION" \
-                          --command-id "$COMMAND_ID" \
-                          --instance-id "$EC2_INSTANCE_ID" \
-                          --query "Status" \
-                          --output text 2>/dev/null || true)
-
-                        case "$STATUS" in
-                            Success)
-                                echo "Deployment completed."
-                                exit 0
-                                ;;
-                            Failed|TimedOut|Cancelled)
-                                aws ssm get-command-invocation \
-                                  --region "$AWS_REGION" \
-                                  --command-id "$COMMAND_ID" \
-                                  --instance-id "$EC2_INSTANCE_ID" \
-                                  --query '{Status:Status,Details:StatusDetails,Error:StandardErrorContent}' \
-                                  --output json || true
-                                exit 1
-                                ;;
-                        esac
-
-                        sleep 5
-                    done
-
-                    echo "Timed out waiting for the SSM deployment command."
-                    exit 1
+                    echo "ECS deployment completed."
                 '''
             }
         }
