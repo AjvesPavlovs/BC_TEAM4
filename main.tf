@@ -10,12 +10,57 @@ terraform {
     }
   }
 
-  # Requirement #2: Remote Terraform Backend with State Locking
-  backend "s3" {
-    bucket         = "slice-sip-terraform-state-devops-t-0-597765856364-eu-west-1-an"
-    key            = "slice-sip/terraform.tfstate"
-    region         = "eu-west-1"
-    dynamodb_table = "slice-sip-terraform-locks1"
+  # BOOTSTRAP NOTE: Keep this backend block commented out for your FIRST 'terraform apply'.
+  # Once the S3 bucket and DynamoDB table are created, uncomment this block and re-run 'terraform init -reconfigure'.
+  # backend "s3" {
+  #   bucket         = "slice-sip-terraform-state-devops-t-0-597765856364-eu-west-1-an"
+  #   key            = "slice-sip/terraform.tfstate"
+  #   region         = "eu-west-1"
+  #   dynamodb_table = "slice-sip-terraform-locks1"
+  # }
+}
+
+# ==============================================================================
+# REMOTE STATE BACKEND RESOURCES (S3 Bucket & DynamoDB Lock Table)
+# ==============================================================================
+
+resource "aws_s3_bucket" "terraform_state" {
+  bucket        = "slice-sip-terraform-state-devops-t-0-597765856364-eu-west-1-an"
+  force_destroy = true
+
+  tags = {
+    Name = "SliceAndSip-TerraformState"
+  }
+}
+
+resource "aws_s3_bucket_versioning" "state_versioning" {
+  bucket = aws_s3_bucket.terraform_state.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "state_encryption" {
+  bucket = aws_s3_bucket.terraform_state.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_dynamodb_table" "terraform_locks" {
+  name         = "slice-sip-terraform-locks1"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "LockID"
+
+  attribute {
+    name = "LockID"
+    type = "S"
+  }
+
+  tags = {
+    Name = "SliceAndSip-TerraformLocks"
   }
 }
 
