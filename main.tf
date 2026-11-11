@@ -96,9 +96,12 @@ resource "aws_instance" "slice_sip_server" {
 }
 
 output "public_ip" {
-  value       = aws_instance.slice_sip_server.public_ip
   description = "The public IP address of the server."
+  value       = aws_instance.slice_sip_server.public_ip
 }
+
 output "instance_id" {
-  value = aws_instance.slice_sip_server.id
+  description = "The EC2 instance ID for AWS SSM and Ansible."
+  value       = aws_instance.slice_sip_server.id
 }
+
