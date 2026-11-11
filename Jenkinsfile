@@ -42,7 +42,12 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                checkout scm
+                // Explicitly checks out the bonus branch
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: 'refs/heads/bonus']],
+                    userRemoteConfigs: scm.userRemoteConfigs
+                ])
             }
         }
 
@@ -125,7 +130,7 @@ pipeline {
                         
                         # Update Nginx active port config and reload
                         sudo mkdir -p /etc/nginx/conf.d
-                        echo "set \$active_port $TARGET_PORT;" | sudo tee /etc/nginx/conf.d/active_port.conf
+                        echo "set \\$active_port $TARGET_PORT;" | sudo tee /etc/nginx/conf.d/active_port.conf
                         sudo nginx -s reload
 
                         if [ "$(docker ps -a -q -f name="$OLD_CONTAINER")" ]; then
@@ -142,10 +147,10 @@ pipeline {
                     fi
 EOF
 
-                    # Escape and wrap parameters for AWS SSM
+                    # Corrected jq syntax for SSM parameters JSON structure
                     PARAMETERS=$(jq -n \
                       --arg cmd "$DEPLOY_SCRIPT bash -s $IMAGE" \
-                      '{"commands([$cmd])}')
+                      '{"commands": [$cmd]}')
 
                     COMMAND_ID=$(aws ssm send-command \
                       --region "$AWS_REGION" \
