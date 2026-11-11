@@ -9,6 +9,14 @@ terraform {
       version = "~> 5.0"
     }
   }
+  
+  # Requirement #2: Remote Terraform Backend with State Locking
+  backend "s3" {
+    bucket         = "slice-sip-terraform-state-devops-t4-0-597765856364-eu-west-1-an"
+    key            = "slice-sip/terraform.tfstate"
+    region         = "eu-west-1"
+    dynamodb_table = "your-dynamodb-lock-table"
+  }
 }
 
 provider "aws" {
@@ -33,7 +41,7 @@ data "aws_ami" "ubuntu" {
   owners = ["099720109477"] # Canonical
 }
 
-# Security Group: HTTP/HTTPS only (No inbound SSH ports needed since SSM uses outbound HTTPS)
+# Security Group: HTTP/HTTPS open to the public (0.0.0.0/0)
 resource "aws_security_group" "slice_sip_sg" {
   name        = "slice-sip-ssm-sg"
   description = "Capstone SG: SSM Managed Instance"
