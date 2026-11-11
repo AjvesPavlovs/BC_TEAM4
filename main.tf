@@ -9,14 +9,20 @@ terraform {
       version = "~> 5.0"
     }
   }
-  
+
   # Requirement #2: Remote Terraform Backend with State Locking
   backend "s3" {
     bucket         = "slice-sip-terraform-state-devops-t4-0-597765856364-eu-west-1-an"
     key            = "slice-sip/terraform.tfstate"
     region         = "eu-west-1"
-    dynamodb_table = "your-dynamodb-lock-table"
+    dynamodb_table = "slice-sip-terraform-locks"
   }
+}
+
+variable "discord_webhook_url" {
+  description = "Discord webhook URL used by the Lambda notifier. Keep this value out of version control."
+  type        = string
+  sensitive   = true
 }
 
 provider "aws" {
@@ -86,7 +92,7 @@ data "aws_iam_instance_profile" "ssm_profile" {
 }
 
 # Attach CloudWatch Agent Policy to allow reporting RAM and Disk metrics
-resource "aws_iam_role_policy_attachment "cw_agent" {
+resource "aws_iam_role_policy_attachment" "cw_agent" {
   role       = data.aws_iam_role.ssm_role.name
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
 }
@@ -141,7 +147,7 @@ resource "aws_iam_role" "lambda_sns_to_discord" {
   })
 }
 
-resource "aws_iam_role_policy_attachment "lambda_logs" {
+resource "aws_iam_role_policy_attachment" "lambda_logs" {
   role       = aws_iam_role.lambda_sns_to_discord.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
@@ -157,19 +163,19 @@ resource "aws_lambda_function" "discord_notifier" {
 
   environment {
     variables = {
-      DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN" # Replace with your Discord Webhook URL
+      DISCORD_WEBHOOK_URL = var.discord_webhook_url
     }
   }
 }
 
 # Subscribe Lambda to the SNS Topic
-resource "aws_sns_topic_subscription "lambda_sub" {
+resource "aws_sns_topic_subscription" "lambda_sub" {
   topic_arn = aws_sns_topic.discord_alerts.arn
   protocol  = "lambda"
   endpoint  = aws_lambda_function.discord_notifier.arn
 }
 
-resource "aws_lambda_permission "allow_sns" {
+resource "aws_lambda_permission" "allow_sns" {
   statement_id  = "AllowExecutionFromSNS"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.discord_notifier.function_name

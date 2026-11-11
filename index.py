@@ -2,14 +2,51 @@ import os
 import json
 import urllib.request
 
-WEBHOOK_URL = os.environ['https://discord.com/api/webhooks/1570066909695705088/XfrPt9g3n-YkegmU19wbLvTD9WkAJ7xT23rKUhBfsZGPDqtCmC-wAp4Gw5lYwDyVFBAY']
+
+def get_webhook_url():
+    webhook_url = os.environ.get('DISCORD_WEBHOOK_URL')
+    if not webhook_url:
+        raise ValueError('DISCORD_WEBHOOK_URL environment variable is not set')
+    return webhook_url
+
+
+def _extract_sns_message(record):
+    if not isinstance(record, dict):
+        return {}
+
+    sns_data = record.get('Sns', {})
+    if not isinstance(sns_data, dict):
+        return {}
+
+    message = sns_data.get('Message', '{}')
+    if isinstance(message, str):
+        try:
+            parsed_message = json.loads(message)
+        except json.JSONDecodeError:
+            return {}
+        if isinstance(parsed_message, dict):
+            return parsed_message
+        return {}
+
+    if isinstance(message, dict):
+        return message
+
+    return {}
+
 
 def handler(event, context):
     try:
-        # Extract SNS message payload sent by CloudWatch Alarm
-        sns_message = json.loads(event['Records'][0]['Sns']['Message'])
+        event = event or {}
+        records = event.get('Records', []) if isinstance(event, dict) else []
+        if not records:
+            return {'statusCode': 400, 'body': 'No SNS records found'}
+
+        sns_message = _extract_sns_message(records[0])
+        if not sns_message:
+            return {'statusCode': 400, 'body': 'No valid SNS message found'}
+
         alarm_name = sns_message.get('AlarmName', 'Unknown Alarm')
-        new_state = sns_message.get('NewStateValue', 'UNKNOWN')
+        new_state = str(sns_message.get('NewStateValue', 'UNKNOWN')).upper()
         reason = sns_message.get('NewStateReason', 'No reason provided')
 
         # Format Discord message color based on state (Red for ALARM, Green for OK)
@@ -25,7 +62,7 @@ def handler(event, context):
 
         data = json.dumps(payload).encode('utf-8')
         req = urllib.request.Request(
-            WEBHOOK_URL,
+            get_webhook_url(),
             data=data,
             headers={'Content-Type': 'application/json', 'User-Agent': 'AWS-SNS-Discord'}
         )
@@ -36,4 +73,3 @@ def handler(event, context):
     except Exception as e:
         print(f"Error sending message to Discord: {e}")
         return {'statusCode': 500, 'body': str(e)}
-}
