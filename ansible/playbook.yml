@@ -1,33 +1,54 @@
 
 ---
-- name: Configure Slice and Sip EC2 server
+- name: Prepare Slice and Sip deployment host
   hosts: localhost
   connection: local
   become: true
+  gather_facts: true
+
+  vars:
+    deployment_dir: /opt/slice-sip
+    required_packages:
+      - docker.io
+      - git
+      - curl
+      - ca-certificates
 
   tasks:
-    - name: Install required packages
+    - name: Verify Ubuntu environment
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'Ubuntu'
+        fail_msg: "This playbook requires Ubuntu."
+
+    - name: Install deployment dependencies
       ansible.builtin.apt:
-        name:
-          - docker.io
-          - git
-          - curl
+        name: "{{ required_packages }}"
         state: present
         update_cache: true
+        cache_valid_time: 3600
 
-    - name: Start and enable Docker
+    - name: Enable and start Docker
       ansible.builtin.systemd:
         name: docker
         state: started
         enabled: true
 
-    - name: Verify Docker CLI
+    - name: Create deployment directory
+      ansible.builtin.file:
+        path: "{{ deployment_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Verify Docker installation
       ansible.builtin.command: docker --version
       register: docker_version
       changed_when: false
       when: not ansible_check_mode
 
-    - name: Verify Git
+    - name: Verify Git installation
       ansible.builtin.command: git --version
       register: git_version
       changed_when: false
@@ -35,10 +56,28 @@
 
     - name: Verify Docker daemon
       ansible.builtin.command: docker info
+      register: docker_status
       changed_when: false
+      retries: 5
+      delay: 3
+      until: docker_status.rc == 0
       when: not ansible_check_mode
 
-    - name: Display configuration result
+    - name: Check available disk space
+      ansible.builtin.assert:
+        that:
+          - item.size_available > 1073741824
+        fail_msg: "Less than 1 GiB free on root filesystem."
+      loop: "{{ ansible_facts['mounts'] }}"
+      when:
+        - item.mount == "/"
+        - not ansible_check_mode
+
+    - name: Show configuration result
       ansible.builtin.debug:
-        msg: "Slice and Sip server dependencies are configured"
+        msg:
+          - "Deployment host configured successfully"
+          - "Deployment directory: {{ deployment_dir }}"
+          - "Docker and Git available"
+          - "Docker daemon operational"
       when: not ansible_check_mode
