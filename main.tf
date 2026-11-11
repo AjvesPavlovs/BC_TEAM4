@@ -12,10 +12,10 @@ terraform {
 
   # Requirement #2: Remote Terraform Backend with State Locking
   backend "s3" {
-    bucket         = "slice-sip-terraform-state-devops-t4-0-597765856364-eu-west-1-an"
+    bucket         = "slice-sip-terraform-state-devops-t-0-597765856364-eu-west-1-an"
     key            = "slice-sip/terraform.tfstate"
     region         = "eu-west-1"
-    dynamodb_table = "slice-sip-terraform-locks"
+    dynamodb_table = "slice-sip-terraform-locks1"
   }
 }
 
