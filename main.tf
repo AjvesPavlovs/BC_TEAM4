@@ -99,3 +99,6 @@ output "public_ip" {
   value       = aws_instance.slice_sip_server.public_ip
   description = "The public IP address of the server."
 }
+output "instance_id" {
+  value = aws_instance.slice_sip_server.id
+}
