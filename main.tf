@@ -3,6 +3,8 @@
 # ==============================================================================
 
 terraform {
+  required_version = ">= 1.0.0"
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -13,6 +15,11 @@ terraform {
 
 provider "aws" {
   region = "eu-west-1"
+}
+
+provider "aws" {
+  alias  = "eu_central_1"
+  region = "eu-central-1"
 }
 
 data "aws_vpc" "default" {
@@ -77,6 +84,36 @@ data "aws_iam_instance_profile" "ssm_profile" {
   name = "Bootcamp-Instance-Profile"
 }
 
+resource "aws_cloudwatch_log_group" "app_log_group" {
+  provider          = aws.eu_central_1
+  name              = "/ec2/slice.sip.app.v1.0"
+  retention_in_days = 14
+
+  tags = {
+    Environment = "production"
+    Application = "slice-sip"
+  }
+}
+
+resource "aws_iam_role_policy" "cloudwatch_logs" {
+  name = "slice-sip-cloudwatch-logs"
+  role = data.aws_iam_role.ssm_role.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "${aws_cloudwatch_log_group.app_log_group.arn}:*"
+      }
+    ]
+  })
+}
+
 # EC2 Instance configured for SSM access
 resource "aws_instance" "slice_sip_server" {
   ami                    = data.aws_ami.ubuntu.id
@@ -98,4 +135,9 @@ resource "aws_instance" "slice_sip_server" {
 output "public_ip" {
   value       = aws_instance.slice_sip_server.public_ip
   description = "The public IP address of the server."
+}
+
+output "cloudwatch_log_group_name" {
+  value       = aws_cloudwatch_log_group.app_log_group.name
+  description = "The CloudWatch log group used by the application."
 }
