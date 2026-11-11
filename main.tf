@@ -6,7 +6,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.37"
     }
   }
 
@@ -25,14 +25,16 @@ terraform {
 # ==============================================================================
 
 resource "aws_s3_bucket" "terraform_state" {
-  bucket        = "slice-sip-terraform-state-devops-t-0-597765856364-eu-west-1-an"
-  force_destroy = true
+  bucket = "slice-sip-terraform-state-devops-t-0-59776585634-eu-west-1-an"
+
+  bucket_namespace = "account-regional"
 
   tags = {
-    Name = "SliceAndSip-TerraformState"
+    Name        = "Slice-Sip-Terraform-State"
+    Environment = "dev"
+    Project     = "SliceAndSip"
   }
 }
-
 resource "aws_s3_bucket_versioning" "state_versioning" {
   bucket = aws_s3_bucket.terraform_state.id
   versioning_configuration {
