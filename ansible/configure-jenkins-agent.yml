@@ -1,0 +1,43 @@
+---
+- name: Prepare the approved Ubuntu Jenkins agent
+  hosts: localhost
+  connection: local
+  become: true
+
+  tasks:
+    - name: Require Ubuntu and the existing Jenkins agent user
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'Ubuntu'
+          - jenkins_agent_user is defined
+          - jenkins_agent_user | length > 0
+
+    - name: Look up the existing agent user
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ jenkins_agent_user }}"
+
+    - name: Install build dependencies
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - docker.io
+          - docker-buildx
+          - git
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+        lock_timeout: 120
+
+    - name: Enable and start Docker
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Grant the Jenkins agent access to the Docker daemon
+      ansible.builtin.user:
+        name: "{{ jenkins_agent_user }}"
+        groups: docker
+        append: true

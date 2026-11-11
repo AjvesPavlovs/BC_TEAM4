@@ -1,0 +1,23 @@
+---
+- name: Verify release tools as the Jenkins agent user
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Check build and deployment tools
+      ansible.builtin.command: "{{ item }}"
+      loop:
+        - git --version
+        - curl --version
+        - terraform version
+        - aws --version
+        - docker buildx version
+        - docker info
+      changed_when: false
+
+    - name: Check that Docker can publish a single platform manifest
+      ansible.builtin.command: docker push --help
+      register: docker_push_help
+      changed_when: false
+      failed_when: docker_push_help.rc != 0 or '--platform' not in docker_push_help.stdout

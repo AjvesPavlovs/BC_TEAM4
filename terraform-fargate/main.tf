@@ -1,4 +1,7 @@
 terraform {
+  required_version = ">= 1.10.0"
+  backend "s3" {}
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -8,36 +11,26 @@ terraform {
 }
 
 provider "aws" {
-  region = "eu-west-1"
+  region              = var.aws_region
+  allowed_account_ids = [var.aws_account_id]
 }
 
-data "aws_vpc" "default" {
-  default = true
-}
-
-data "aws_subnets" "public" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.default.id]
-  }
-
-  filter {
-    name   = "map-public-ip-on-launch"
-    values = ["true"]
-  }
+data "aws_subnet" "public" {
+  for_each = var.public_subnet_ids
+  id       = each.value
 }
 
 resource "aws_security_group" "alb" {
-  name        = "slice-sip-fargate-alb-sg"
+  name        = "${var.name_prefix}-alb-sg"
   description = "Allow public HTTP traffic to the Slice and Sip load balancer"
-  vpc_id      = data.aws_vpc.default.id
+  vpc_id      = var.vpc_id
 
   ingress {
     description = "HTTP"
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = var.alb_ingress_cidrs
   }
 
   egress {
@@ -48,14 +41,14 @@ resource "aws_security_group" "alb" {
   }
 
   tags = {
-    Name = "slice-sip-fargate-alb-sg"
+    Name = "${var.name_prefix}-alb-sg"
   }
 }
 
 resource "aws_security_group" "task" {
-  name        = "slice-sip-fargate-task-sg"
+  name        = "${var.name_prefix}-task-sg"
   description = "Allow HTTP from the load balancer to the Fargate task"
-  vpc_id      = data.aws_vpc.default.id
+  vpc_id      = var.vpc_id
 
   ingress {
     description     = "HTTP from ALB"
@@ -73,32 +66,42 @@ resource "aws_security_group" "task" {
   }
 
   tags = {
-    Name = "slice-sip-fargate-task-sg"
+    Name = "${var.name_prefix}-task-sg"
   }
 }
 
 resource "aws_lb" "slice_sip" {
-  name               = "slice-sip-alb"
+  name               = "${var.name_prefix}-alb"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
-  subnets            = data.aws_subnets.public.ids
+  subnets            = var.public_subnet_ids
+
+  lifecycle {
+    precondition {
+      condition = (
+        alltrue([for subnet in data.aws_subnet.public : subnet.vpc_id == var.vpc_id]) &&
+        length(toset([for subnet in data.aws_subnet.public : subnet.availability_zone])) == length(var.public_subnet_ids)
+      )
+      error_message = "Specify subnets from the selected VPC, with one subnet per Availability Zone."
+    }
+  }
 
   tags = {
-    Name = "slice-sip-alb"
+    Name = "${var.name_prefix}-alb"
   }
 }
 
 resource "aws_lb_target_group" "slice_sip" {
-  name        = "slice-sip-tg"
+  name        = "${var.name_prefix}-tg"
   port        = 80
   protocol    = "HTTP"
   target_type = "ip"
-  vpc_id      = data.aws_vpc.default.id
+  vpc_id      = var.vpc_id
 
   health_check {
     path                = "/"
-    matcher             = "200-399"
+    matcher             = "200"
     healthy_threshold   = 2
     unhealthy_threshold = 3
     interval            = 30
@@ -106,7 +109,7 @@ resource "aws_lb_target_group" "slice_sip" {
   }
 
   tags = {
-    Name = "slice-sip-tg"
+    Name = "${var.name_prefix}-tg"
   }
 }
 
@@ -122,46 +125,31 @@ resource "aws_lb_listener" "http" {
 }
 
 resource "aws_ecs_cluster" "slice_sip" {
-  name = "slice-sip-cluster"
-}
-
-resource "aws_iam_role" "ecs_task_execution" {
-  name = "slice-sip-ecs-task-execution-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = "sts:AssumeRole"
-      Principal = {
-        Service = "ecs-tasks.amazonaws.com"
-      }
-    }]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
-  role       = aws_iam_role.ecs_task_execution.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+  name = "${var.name_prefix}-cluster"
 }
 
 resource "aws_cloudwatch_log_group" "slice_sip" {
-  name              = "/ecs/slice-sip"
+  name              = "/ecs/${var.name_prefix}"
   retention_in_days = 7
 }
 
 resource "aws_ecs_task_definition" "slice_sip" {
-  family                   = "slice-sip"
+  family                   = var.name_prefix
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   cpu                      = "256"
   memory                   = "512"
-  execution_role_arn       = aws_iam_role.ecs_task_execution.arn
+  execution_role_arn       = var.task_execution_role_arn
+
+  runtime_platform {
+    operating_system_family = "LINUX"
+    cpu_architecture        = "X86_64"
+  }
 
   container_definitions = jsonencode([
     {
       name      = "slice-sip"
-      image     = "aivisp/slice.sip.app.v1.0:latest"
+      image     = var.application_image
       essential = true
 
       portMappings = [{
@@ -173,25 +161,31 @@ resource "aws_ecs_task_definition" "slice_sip" {
         logDriver = "awslogs"
         options = {
           "awslogs-group"         = aws_cloudwatch_log_group.slice_sip.name
-          "awslogs-region"        = "eu-west-1"
+          "awslogs-region"        = var.aws_region
           "awslogs-stream-prefix" = "ecs"
         }
       }
     }
   ])
 
-  depends_on = [aws_iam_role_policy_attachment.ecs_task_execution]
 }
 
 resource "aws_ecs_service" "slice_sip" {
-  name            = "slice-sip-service"
+  name            = "${var.name_prefix}-service"
   cluster         = aws_ecs_cluster.slice_sip.id
   task_definition = aws_ecs_task_definition.slice_sip.arn
   desired_count   = 1
   launch_type     = "FARGATE"
 
+  health_check_grace_period_seconds = 60
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
   network_configuration {
-    subnets          = data.aws_subnets.public.ids
+    subnets          = var.public_subnet_ids
     security_groups  = [aws_security_group.task.id]
     assign_public_ip = true
   }
@@ -216,4 +210,8 @@ output "ecs_cluster_name" {
 
 output "ecs_service_name" {
   value = aws_ecs_service.slice_sip.name
+}
+
+output "task_definition_arn" {
+  value = aws_ecs_task_definition.slice_sip.arn
 }
