@@ -11,6 +11,8 @@
     woodpecker_enable: false
     # Opt in separately; never replace the working manual service by default.
     ngrok_manage: false
+    # Opt in only after placing the Woodpecker API token on the EC2 host.
+    ecr_secret_refresh_manage: false
     ngrok_hostname: canary-obedient-patriarch.ngrok-free.dev
     ci_directory: /opt/slice-sip-ci
     ci_secret_directory: /etc/slice-sip-ci
@@ -171,6 +173,72 @@
         state: "{{ 'restarted' if (ngrok_unit.changed | default(false)) else 'started' }}"
       when:
         - ngrok_manage | bool
+        - not ansible_check_mode
+
+
+    - name: Check root-only Woodpecker API token before managing ECR refresh
+      ansible.builtin.stat:
+        path: /etc/slice-sip-ci/woodpecker-api-token
+      register: ecr_api_token
+      when: ecr_secret_refresh_manage | bool
+
+    - name: Require a protected Woodpecker API token
+      ansible.builtin.assert:
+        that:
+          - ecr_api_token.stat.exists | default(false)
+          - ecr_api_token.stat.pw_name | default('') == 'root'
+          - ecr_api_token.stat.mode | default('') == '0600'
+        fail_msg: >-
+          Missing protected Woodpecker API token. Create it root:root mode 0600
+          before enabling ECR credential rotation. No tokens belong in Git.
+      when: ecr_secret_refresh_manage | bool
+
+    - name: Create privileged-only publisher directory
+      ansible.builtin.file:
+        path: /usr/local/libexec/slice-sip-ci
+        state: directory
+        owner: root
+        group: root
+        mode: '0750'
+      when: ecr_secret_refresh_manage | bool
+
+    - name: Install ECR token rotation helper (no credentials inside)
+      ansible.builtin.copy:
+        src: ../ci/refresh-ecr-woodpecker-secret.py
+        dest: /usr/local/libexec/slice-sip-ci/refresh-ecr-woodpecker-secret.py
+        owner: root
+        group: root
+        mode: '0750'
+      when:
+        - ecr_secret_refresh_manage | bool
+        - not ansible_check_mode
+
+    - name: Install ECR token refresh oneshot unit
+      ansible.builtin.copy:
+        src: ../ci/systemd/slice-sip-ecr-secret.service
+        dest: /etc/systemd/system/slice-sip-ecr-secret.service
+        owner: root
+        group: root
+        mode: '0644'
+      when: ecr_secret_refresh_manage | bool
+
+    - name: Install ECR token refresh timer
+      ansible.builtin.copy:
+        src: ../ci/systemd/slice-sip-ecr-secret.timer
+        dest: /etc/systemd/system/slice-sip-ecr-secret.timer
+        owner: root
+        group: root
+        mode: '0644'
+      when: ecr_secret_refresh_manage | bool
+
+    - name: Enable ECR token refresh timer when explicitly requested
+      ansible.builtin.systemd_service:
+        name: slice-sip-ecr-secret.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+      when:
+        - ecr_secret_refresh_manage | bool
         - not ansible_check_mode
 
     - name: Summarize result without exposing credentials
