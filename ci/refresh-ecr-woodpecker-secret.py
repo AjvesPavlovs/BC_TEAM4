@@ -14,7 +14,7 @@ import urllib.error
 import urllib.request
 
 WOODPECKER_API = "http://127.0.0.1:8000/api"
-REPOSITORY = "reinsonronalds-design/BC_TEAM4"
+REPOSITORY = "reinsonsronalds-design/BC_TEAM4"
 API_TOKEN_FILE = Path("/etc/slice-sip-ci/woodpecker-api-token")
 ECR_REGION = "eu-west-1"
 SECRET_NAME = "ecr_password"
