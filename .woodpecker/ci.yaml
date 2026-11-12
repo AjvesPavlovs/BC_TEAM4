@@ -1,0 +1,11 @@
+when:
+  - event: push
+    branch: feature/woodpecker-ci
+
+steps:
+  - name: check-project-files
+    image: alpine:3.21
+    commands:
+      - echo "Woodpecker pipeline is running"
+      - test -f Dockerfile
+      - test -f index.html
