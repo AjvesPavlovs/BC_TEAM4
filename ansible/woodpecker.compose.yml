@@ -1,0 +1,35 @@
+services:
+  woodpecker-server:
+    image: woodpeckerci/woodpecker-server:v3.19.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18000:8000"
+    volumes:
+      - server-data:/var/lib/woodpecker
+    environment:
+      WOODPECKER_HOST: "${WOODPECKER_HOST:?Set the public HTTPS URL}"
+      WOODPECKER_ADMIN: "${WOODPECKER_ADMIN:?Set the approved GitHub admin login}"
+      WOODPECKER_OPEN: "false"
+      WOODPECKER_REPO_OWNERS: "${WOODPECKER_REPO_OWNERS:?Set the approved GitHub owner}"
+      WOODPECKER_GITHUB: "true"
+      WOODPECKER_GITHUB_CLIENT: "${WOODPECKER_GITHUB_CLIENT:?Set the GitHub OAuth client ID}"
+      WOODPECKER_GITHUB_SECRET: "${WOODPECKER_GITHUB_SECRET:?Set the GitHub OAuth client secret}"
+      WOODPECKER_AGENT_SECRET: "${WOODPECKER_AGENT_SECRET:?Set a random agent secret}"
+
+  woodpecker-agent:
+    image: woodpeckerci/woodpecker-agent:v3.19.0
+    restart: unless-stopped
+    depends_on:
+      - woodpecker-server
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - agent-data:/etc/woodpecker
+    environment:
+      WOODPECKER_SERVER: woodpecker-server:9000
+      WOODPECKER_AGENT_SECRET: "${WOODPECKER_AGENT_SECRET:?Set a random agent secret}"
+      WOODPECKER_BACKEND: docker
+      WOODPECKER_MAX_WORKFLOWS: "1"
+
+volumes:
+  server-data:
+  agent-data:

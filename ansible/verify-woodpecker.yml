@@ -1,0 +1,43 @@
+---
+- name: Verify the Woodpecker installation on EC2
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: false
+  vars:
+    woodpecker_directory: /opt/slice-sip-woodpecker
+    woodpecker_env_file: /etc/slice-sip-woodpecker.env
+    woodpecker_http_port: 18000
+  tasks:
+    - name: List running services in the Woodpecker project
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - --project-name
+          - slice-sip-woodpecker
+          - --env-file
+          - "{{ woodpecker_env_file }}"
+          - --file
+          - "{{ woodpecker_directory }}/compose.yml"
+          - ps
+          - --status
+          - running
+          - --services
+      register: woodpecker_services
+      changed_when: false
+      retries: 12
+      delay: 5
+      until:
+        - "'woodpecker-server' in woodpecker_services.stdout_lines"
+        - "'woodpecker-agent' in woodpecker_services.stdout_lines"
+
+    - name: Check the Woodpecker HTTP endpoint
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ woodpecker_http_port }}/healthz"
+        status_code: 200
+        use_proxy: false
+      register: woodpecker_http
+      retries: 12
+      delay: 5
+      until: woodpecker_http.status == 200

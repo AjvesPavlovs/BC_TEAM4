@@ -1,0 +1,15 @@
+when:
+  - event: [push, manual, deployment]
+
+steps:
+  - name: terraform-checks
+    image: hashicorp/terraform:1.13.5
+    commands:
+      - sh ci/check-terraform.sh
+
+  - name: docker-build-and-smoke
+    image: docker:28.5.2-cli
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    commands:
+      - sh ci/check-image.sh

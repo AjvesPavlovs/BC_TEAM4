@@ -1,0 +1,64 @@
+when:
+  - event: deployment
+    evaluate: 'CI_COMMIT_BRANCH == CI_REPO_DEFAULT_BRANCH && CI_PIPELINE_DEPLOY_TARGET == "fargate"'
+
+depends_on: [verify]
+concurrency:
+  limit: 1
+
+steps:
+  - name: check-aws-environment
+    image: hashicorp/terraform:1.13.5
+    environment:
+      AWS_ACCESS_KEY_ID:
+        from_secret: aws_access_key_id
+      AWS_SECRET_ACCESS_KEY:
+        from_secret: aws_secret_access_key
+      AWS_SESSION_TOKEN:
+        from_secret: aws_session_token
+      TF_VAR_aws_account_id:
+        from_secret: fargate_aws_account_id
+      TF_VAR_aws_region:
+        from_secret: fargate_aws_region
+      FARGATE_BACKEND_CONFIG:
+        from_secret: fargate_backend_config
+      FARGATE_VARS:
+        from_secret: fargate_vars
+    commands:
+      - apk add --no-cache aws-cli
+      - sh ci/deploy-fargate.sh check
+
+  - name: publish-tested-image
+    image: docker:28.5.2-cli
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      DOCKERHUB_REPO:
+        from_secret: dockerhub_repo
+      DOCKERHUB_USER:
+        from_secret: dockerhub_user
+      DOCKERHUB_TOKEN:
+        from_secret: dockerhub_token
+    commands:
+      - sh ci/check-image.sh publish
+
+  - name: deploy-and-verify
+    image: hashicorp/terraform:1.13.5
+    environment:
+      AWS_ACCESS_KEY_ID:
+        from_secret: aws_access_key_id
+      AWS_SECRET_ACCESS_KEY:
+        from_secret: aws_secret_access_key
+      AWS_SESSION_TOKEN:
+        from_secret: aws_session_token
+      TF_VAR_aws_account_id:
+        from_secret: fargate_aws_account_id
+      TF_VAR_aws_region:
+        from_secret: fargate_aws_region
+      FARGATE_BACKEND_CONFIG:
+        from_secret: fargate_backend_config
+      FARGATE_VARS:
+        from_secret: fargate_vars
+    commands:
+      - apk add --no-cache aws-cli curl
+      - sh ci/deploy-fargate.sh apply

@@ -1,0 +1,92 @@
+---
+- name: Configure Woodpecker CI on the approved EC2 host
+  hosts: localhost
+  connection: local
+  become: true
+  vars:
+    woodpecker_directory: /opt/slice-sip-woodpecker
+    woodpecker_env_file: /etc/slice-sip-woodpecker.env
+  tasks:
+    - name: Require Ubuntu on x86-64
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'Ubuntu'
+          - ansible_facts['architecture'] == 'x86_64'
+
+    - name: Check existing Docker Engine, Compose and Buildx
+      ansible.builtin.command: "{{ item }}"
+      loop:
+        - docker info
+        - docker compose version
+        - docker buildx version
+      changed_when: false
+      check_mode: false
+
+    - name: Inspect the Woodpecker environment file
+      ansible.builtin.stat:
+        path: "{{ woodpecker_env_file }}"
+      register: woodpecker_env
+
+    - name: Require a root-owned environment file with mode 0600
+      ansible.builtin.assert:
+        that:
+          - woodpecker_env.stat.exists
+          - woodpecker_env.stat.isreg
+          - woodpecker_env.stat.uid == 0
+          - woodpecker_env.stat.mode == '0600'
+
+    - name: Validate the Compose configuration before writing it to the host
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - --project-name
+          - slice-sip-woodpecker
+          - --env-file
+          - "{{ woodpecker_env_file }}"
+          - --file
+          - "{{ playbook_dir }}/woodpecker.compose.yml"
+          - config
+          - --quiet
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Create the Woodpecker project directory
+      ansible.builtin.file:
+        path: "{{ woodpecker_directory }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0750'
+
+    - name: Install the Woodpecker Compose file
+      ansible.builtin.copy:
+        src: woodpecker.compose.yml
+        dest: "{{ woodpecker_directory }}/compose.yml"
+        owner: root
+        group: root
+        mode: '0640'
+
+    - name: Start the Woodpecker Compose project
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - --project-name
+          - slice-sip-woodpecker
+          - --env-file
+          - "{{ woodpecker_env_file }}"
+          - --file
+          - "{{ woodpecker_directory }}/compose.yml"
+          - up
+          - --detach
+          - --wait
+          - --wait-timeout
+          - '120'
+      register: woodpecker_up
+      changed_when: woodpecker_up.stderr is search('Created|Recreated|Started')
+      when: not ansible_check_mode
+
+- ansible.builtin.import_playbook: verify-woodpecker.yml
+  when: not ansible_check_mode
