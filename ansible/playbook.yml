@@ -1,9 +1,35 @@
 
 ---
-- name: Configure Slice and Sip EC2 server
+- name: Configure Slice and Sip EC2 server for Woodpecker
   hosts: localhost
   connection: local
   become: true
+
+  vars_prompt:
+    - name: woodpecker_host
+      prompt: "Woodpecker publiskā HTTPS adrese bez beigu slīpsvītras"
+      private: false
+
+    - name: woodpecker_github_client
+      prompt: "GitHub OAuth Client ID"
+      private: false
+
+    - name: woodpecker_github_secret
+      prompt: "GitHub OAuth Client Secret"
+      private: true
+
+    - name: woodpecker_agent_secret
+      prompt: "Woodpecker agent shared secret"
+      private: true
+
+    - name: woodpecker_admin
+      prompt: "Tavs GitHub lietotājvārds Woodpecker administratoram"
+      private: false
+
+    - name: woodpecker_repo_owner
+      prompt: "GitHub repo īpašnieks"
+      private: false
+      default: reinsonsronalds-design
 
   tasks:
     - name: Install required packages
@@ -21,24 +47,59 @@
         state: started
         enabled: true
 
-    - name: Verify Docker CLI
-      ansible.builtin.command: docker --version
-      register: docker_version
-      changed_when: false
-      when: not ansible_check_mode
+    - name: Create Woodpecker deployment directory
+      ansible.builtin.file:
+        path: /opt/woodpecker
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
 
-    - name: Verify Git
-      ansible.builtin.command: git --version
-      register: git_version
-      changed_when: false
-      when: not ansible_check_mode
+    - name: Create Woodpecker secrets directory
+      ansible.builtin.file:
+        path: /etc/woodpecker
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
 
-    - name: Verify Docker daemon
-      ansible.builtin.command: docker info
-      changed_when: false
-      when: not ansible_check_mode
+    - name: Copy Woodpecker Compose file
+      ansible.builtin.copy:
+        src: woodpecker-compose.yml
+        dest: /opt/woodpecker/docker-compose.yml
+        owner: root
+        group: root
+        mode: '0644'
 
-    - name: Display configuration result
-      ansible.builtin.debug:
-        msg: "Slice and Sip server dependencies are configured"
-      when: not ansible_check_mode
+    - name: Create Woodpecker server environment file
+      ansible.builtin.copy:
+        dest: /etc/woodpecker/server.env
+        owner: root
+        group: root
+        mode: '0600'
+        content: |
+          WOODPECKER_HOST={{ woodpecker_host }}
+          WOODPECKER_GITHUB=true
+          WOODPECKER_GITHUB_CLIENT={{ woodpecker_github_client }}
+          WOODPECKER_GITHUB_SECRET={{ woodpecker_github_secret }}
+          WOODPECKER_AGENT_SECRET={{ woodpecker_agent_secret }}
+          WOODPECKER_ADMIN={{ woodpecker_admin }}
+          WOODPECKER_REPO_OWNERS={{ woodpecker_repo_owner }}
+          WOODPECKER_OPEN=true
+      no_log: true
+
+    - name: Create Woodpecker agent environment file
+      ansible.builtin.copy:
+        dest: /etc/woodpecker/agent.env
+        owner: root
+        group: root
+        mode: '0600'
+        content: |
+          WOODPECKER_SERVER=woodpecker-server:9000
+          WOODPECKER_AGENT_SECRET={{ woodpecker_agent_secret }}
+      no_log: true
+
+    - name: Start Woodpecker server and agent
+      ansible.builtin.command:
+        cmd: docker compose -f /opt/woodpecker/docker-compose.yml up -d
+      changed_when: false
