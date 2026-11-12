@@ -1,11 +1,12 @@
-# --- Terraform ---
-# Terraform cache and state files
+# Terraform local working data and state (never commit state or credentials)
 .terraform/
 *.tfstate
 *.tfstate.*
+*.tfplan
 crash.log
 crash.*.log
 *.tfvars
+!*.tfvars.example
 *.tfvars.json
 override.tf
 override.tf.json
@@ -13,38 +14,30 @@ _override.tf
 _override.tf.json
 .terraform.tfstate.lock.info
 
-# --- Ansible ---
-# Local Ansible artifacts and retry files
+# Ansible local artifacts
 *.retry
 .ansible/
 
-# --- Docker & Environment ---
-# Environment variables and sensitive secrets
+# Python caches and virtual environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Local secrets and environment files
 .env
-*.env
+.env.*
+!.env.example
 *.pem
 *.key
 
-# --- Operating Systems ---
-# Windows
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-$RECYCLE.BIN/
+# Generated build/package artifacts
+lambda_payload.zip
+dist/
+build/
 
-# macOS
+# Editor and runtime output
 .DS_Store
-.AppleDouble
-.LSOverride
-._*
-
-# Linux
-*~
-.directory
-.Trash-*
-
-# --- IDEs & Editors ---
-.vscode/
-.idea/
-*.swp
-*.swo
+*.log
+terraform.tfstate.d/

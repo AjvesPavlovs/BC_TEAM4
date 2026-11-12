@@ -1,83 +1,143 @@
-
 ---
-- name: Prepare Slice and Sip deployment host
+# Phase 4A: stage Woodpecker CI on the instructor-provided Ubuntu host.
+# Deliberately DOES NOT install/upgrade/restart Docker, Ansible or Git.
+# Safe default: only stage files, do not start containers.
+- name: Stage Slice and Sip CI files on existing EC2
   hosts: localhost
   connection: local
   become: true
   gather_facts: true
-
   vars:
-    deployment_dir: /opt/slice-sip
-    required_packages:
-      - docker.io
-      - git
-      - curl
-      - ca-certificates
-
+    woodpecker_enable: false
+    ci_directory: /opt/slice-sip-ci
+    ci_secret_directory: /etc/slice-sip-ci
+    ci_compose_project: slice-sip-ci
   tasks:
-    - name: Verify Ubuntu environment
+    - name: Verify Ubuntu 22.04 x86_64 before changing host files
       ansible.builtin.assert:
         that:
-          - ansible_facts['distribution'] == 'Ubuntu'
-        fail_msg: "This playbook requires Ubuntu."
+          - ansible_distribution == 'Ubuntu'
+          - ansible_distribution_version == '22.04'
+          - ansible_architecture == 'x86_64'
+        fail_msg: >-
+          This playbook is only approved for Ubuntu 22.04 x86_64.
+          Do not proceed on another base image.
 
-    - name: Install deployment dependencies
-      ansible.builtin.apt:
-        name: "{{ required_packages }}"
-        state: present
-        update_cache: true
-        cache_valid_time: 3600
+    - name: Inspect existing Docker packages (read only)
+      ansible.builtin.package_facts:
+        manager: apt
 
-    - name: Enable and start Docker
-      ansible.builtin.systemd:
-        name: docker
-        state: started
-        enabled: true
+    - name: Require the existing official Docker CE and Compose installation
+      ansible.builtin.assert:
+        that:
+          - "'docker-ce' in ansible_facts.packages"
+          - "'docker-ce-cli' in ansible_facts.packages"
+          - "'docker-compose-plugin' in ansible_facts.packages"
+          - "'docker.io' not in ansible_facts.packages"
+        fail_msg: >-
+          Docker packages differ from the verified bootcamp instance.
+          Stop and inspect before modifying them; this playbook never installs Docker.
 
-    - name: Create deployment directory
-      ansible.builtin.file:
-        path: "{{ deployment_dir }}"
-        state: directory
-        owner: root
-        group: root
-        mode: "0755"
-
-    - name: Verify Docker installation
-      ansible.builtin.command: docker --version
-      register: docker_version
+    - name: Verify Docker daemon is active (read only)
+      ansible.builtin.command: systemctl is-active docker
+      register: docker_active
       changed_when: false
-      when: not ansible_check_mode
+      check_mode: false
 
-    - name: Verify Git installation
+    - name: Verify Docker Compose is available (read only)
+      ansible.builtin.command: docker compose version
+      register: compose_version
+      changed_when: false
+      check_mode: false
+
+    - name: Verify Git is available (read only)
       ansible.builtin.command: git --version
       register: git_version
       changed_when: false
+      check_mode: false
+
+    - name: Create CI Compose directory
+      ansible.builtin.file:
+        path: "{{ ci_directory }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Create root-only CI secrets directory (no credentials stored yet)
+      ansible.builtin.file:
+        path: "{{ ci_secret_directory }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+
+    - name: Stage Woodpecker Compose definition (not started)
+      ansible.builtin.copy:
+        src: ../ci/docker-compose.yml
+        dest: "{{ ci_directory }}/docker-compose.yml"
+        owner: root
+        group: root
+        mode: '0644'
+        backup: true
+      # Directories are only *predicted* in Ansible check mode. Copying into
+      # them would fail on first dry run because they do not yet exist.
       when: not ansible_check_mode
 
-    - name: Verify Docker daemon
-      ansible.builtin.command: docker info
-      register: docker_status
-      changed_when: false
-      retries: 5
-      delay: 3
-      until: docker_status.rc == 0
-      when: not ansible_check_mode
+    - name: Check for protected Woodpecker credentials
+      ansible.builtin.stat:
+        path: "{{ ci_secret_directory }}/woodpecker.env"
+      register: ci_env
 
-    - name: Check available disk space
+    - name: Require secure existing credentials before optional start
       ansible.builtin.assert:
         that:
-          - item.size_available > 1073741824
-        fail_msg: "Less than 1 GiB free on root filesystem."
-      loop: "{{ ansible_facts['mounts'] }}"
-      when:
-        - item.mount == "/"
-        - not ansible_check_mode
+          - ci_env.stat.exists
+          - ci_env.stat.pw_name | default('') == 'root'
+          - ci_env.stat.gr_name | default('') == 'root'
+          - ci_env.stat.mode | default('') == '0600'
+        fail_msg: >-
+          Before starting Woodpecker, create /etc/slice-sip-ci/woodpecker.env
+          owned by root:root and mode 0600; configure approved HTTPS and GitHub OAuth.
+      when: woodpecker_enable | bool
 
-    - name: Show configuration result
+    - name: Verify Compose configuration before optional start
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - -p
+          - "{{ ci_compose_project }}"
+          - --env-file
+          - "{{ ci_secret_directory }}/woodpecker.env"
+          - -f
+          - "{{ ci_directory }}/docker-compose.yml"
+          - config
+          - --quiet
+      changed_when: false
+      no_log: true
+      when: woodpecker_enable | bool
+
+    - name: Start Woodpecker only when explicitly approved
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - -p
+          - "{{ ci_compose_project }}"
+          - --env-file
+          - "{{ ci_secret_directory }}/woodpecker.env"
+          - -f
+          - "{{ ci_directory }}/docker-compose.yml"
+          - up
+          - -d
+      no_log: true
+      when: woodpecker_enable | bool
+
+    - name: Summarize result without exposing credentials
       ansible.builtin.debug:
-        msg:
-          - "Deployment host configured successfully"
-          - "Deployment directory: {{ deployment_dir }}"
-          - "Docker and Git available"
-          - "Docker daemon operational"
-      when: not ansible_check_mode
+        msg: >-
+          CI files staged under {{ ci_directory }}. Docker not installed,
+          upgraded, or restarted. Woodpecker start requested:
+          {{ woodpecker_enable | bool }}. Next: approved HTTPS hostname,
+          GitHub OAuth and protected secret file before first activation.

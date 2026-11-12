@@ -1,0 +1,20 @@
+# Copy to terraform.tfvars (gitignored) before planning.
+# Do not place secrets or AWS credentials here.
+aws_region       = "eu-west-1"
+project_name     = "slice-sip"
+existing_ci_instance_id = "i-0eb789ac23be694c0"
+
+# STAGE 1: keep both false for first infrastructure plan.
+enable_database    = false
+enable_application = false
+
+# STAGE 2: enable RDS when ready for ongoing AWS charges.
+# enable_database = true
+
+# STAGE 3: only after publishing initial images to ECR:
+# enable_application = true
+# frontend_image_tag = "<immutable-commit-tag-already-pushed>"
+# backend_image_tag  = "<immutable-commit-tag-already-pushed>"
+
+# Optional ACM certificate for your application domain (strongly recommended).
+# app_certificate_arn = "arn:aws:acm:eu-west-1:123456789012:certificate/..."

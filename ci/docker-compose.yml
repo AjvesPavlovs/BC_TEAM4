@@ -1,0 +1,48 @@
+# Woodpecker 3.20.1 - CI control plane ONLY. No Slice & Sip application on EC2.
+# Run from /opt/slice-sip-ci using:
+# docker compose --env-file /etc/slice-sip-ci/woodpecker.env -f docker-compose.yml up -d
+# Public ingress MUST be provided by a separate HTTPS reverse proxy.
+services:
+  woodpecker-server:
+    image: woodpeckerci/woodpecker-server:v3.20.1
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000" # no public ingress yet
+    volumes:
+      - server-data:/var/lib/woodpecker/
+    environment:
+      WOODPECKER_HOST: ${WOODPECKER_HOST:?Set Woodpecker HTTPS address}
+      WOODPECKER_GITHUB: "true"
+      WOODPECKER_GITHUB_CLIENT: ${WOODPECKER_GITHUB_CLIENT:?Set GitHub OAuth client ID}
+      WOODPECKER_GITHUB_SECRET: ${WOODPECKER_GITHUB_SECRET:?Set GitHub OAuth client secret}
+      WOODPECKER_AGENT_SECRET: ${WOODPECKER_AGENT_SECRET:?Set agent shared secret}
+      WOODPECKER_ADMIN: ${WOODPECKER_ADMIN:?Set GitHub admin username}
+      WOODPECKER_OPEN: ${WOODPECKER_OPEN:-false}
+      WOODPECKER_MAX_WORKFLOWS: "1"
+    networks:
+      - ci-internal
+
+  woodpecker-agent:
+    image: woodpeckerci/woodpecker-agent:v3.20.1
+    command: agent
+    restart: unless-stopped
+    depends_on:
+      - woodpecker-server
+    volumes:
+      # WARNING: Docker socket grants host-level authority to trusted CI workflows.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - agent-data:/etc/woodpecker
+    environment:
+      WOODPECKER_SERVER: woodpecker-server:9000
+      WOODPECKER_AGENT_SECRET: ${WOODPECKER_AGENT_SECRET:?Set agent shared secret}
+      WOODPECKER_MAX_WORKFLOWS: "1"
+    networks:
+      - ci-internal
+
+networks:
+  ci-internal:
+    driver: bridge
+
+volumes:
+  server-data: # persistent SQLite database
+  agent-data:

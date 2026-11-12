@@ -1,0 +1,12 @@
+# Safe first pipeline: no Docker socket, AWS privileges, or deployment secrets.
+# Expand later with ECR builds and Ansible -> ECS blue/green deployment.
+when:
+  - event: push
+    branch: devops/woodpecker-fargate
+
+steps:
+  - name: unit-tests
+    image: python:3.12-slim
+    commands:
+      - python -m pip install --disable-pip-version-check -r backend/requirements.txt pytest httpx
+      - PYTHONPATH=backend python -m pytest -q backend/tests
