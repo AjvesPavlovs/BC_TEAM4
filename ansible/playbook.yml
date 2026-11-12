@@ -35,7 +35,6 @@
     - name: Install required packages
       ansible.builtin.apt:
         name:
-          - docker.io
           - git
           - curl
         state: present
