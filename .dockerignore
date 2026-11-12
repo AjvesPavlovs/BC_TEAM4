@@ -1,0 +1,7 @@
+# The frontend Dockerfile only needs these three source paths.
+# Do not send Terraform state, credentials, or other project files to the image builder.
+*
+!Dockerfile
+!index.html
+!nginx/
+!nginx/default.conf.template

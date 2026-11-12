@@ -9,6 +9,9 @@
   gather_facts: true
   vars:
     woodpecker_enable: false
+    # Opt in separately; never replace the working manual service by default.
+    ngrok_manage: false
+    ngrok_hostname: canary-obedient-patriarch.ngrok-free.dev
     ci_directory: /opt/slice-sip-ci
     ci_secret_directory: /etc/slice-sip-ci
     ci_compose_project: slice-sip-ci
@@ -133,6 +136,42 @@
           - -d
       no_log: true
       when: woodpecker_enable | bool
+
+    - name: Check that ngrok configuration exists before optional management
+      ansible.builtin.stat:
+        path: /home/ssm-user/.config/ngrok/ngrok.yml
+      register: ngrok_config
+      when: ngrok_manage | bool
+
+    - name: Require existing ngrok authentication configuration
+      ansible.builtin.assert:
+        that:
+          - ngrok_config.stat.exists | default(false)
+        fail_msg: >-
+          Stop: ngrok agent config missing. Set up ngrok securely first;
+          never commit its authtoken to the repository.
+      when: ngrok_manage | bool
+
+    - name: Manage ngrok systemd unit only when explicitly enabled
+      ansible.builtin.template:
+        src: templates/ngrok-woodpecker.service.j2
+        dest: /etc/systemd/system/ngrok-woodpecker.service
+        owner: root
+        group: root
+        mode: '0644'
+        backup: true
+      register: ngrok_unit
+      when: ngrok_manage | bool
+
+    - name: Ensure ngrok service is enabled and running (opt-in)
+      ansible.builtin.systemd_service:
+        name: ngrok-woodpecker
+        daemon_reload: true
+        enabled: true
+        state: "{{ 'restarted' if (ngrok_unit.changed | default(false)) else 'started' }}"
+      when:
+        - ngrok_manage | bool
+        - not ansible_check_mode
 
     - name: Summarize result without exposing credentials
       ansible.builtin.debug:

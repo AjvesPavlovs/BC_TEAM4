@@ -1,0 +1,8 @@
+# Keep local credentials, private keys, tests, and caches out of the build context.
+.env
+.env.*
+*.pem
+*.key
+__pycache__/
+.pytest_cache/
+tests/

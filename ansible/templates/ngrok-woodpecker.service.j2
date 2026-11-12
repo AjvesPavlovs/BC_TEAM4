@@ -1,0 +1,17 @@
+[Unit]
+Description=ngrok HTTPS tunnel for Woodpecker CI
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=ssm-user
+Group=ssm-user
+Environment=HOME=/home/ssm-user
+ExecStart=/usr/local/bin/ngrok http 8000 --url=https://{{ ngrok_hostname }} --config=/home/ssm-user/.config/ngrok/ngrok.yml
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

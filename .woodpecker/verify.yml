@@ -1,5 +1,5 @@
-# Safe first pipeline: no Docker socket, AWS privileges, or deployment secrets.
-# Expand later with ECR builds and Ansible -> ECS blue/green deployment.
+# Phase 5A: test + unprivileged container image builds (NO registry pushes).
+# Do not enable ECR publishing until IAM permissions and registry provisioning are reviewed.
 when:
   - event: push
     branch: devops/woodpecker-fargate
@@ -10,3 +10,19 @@ steps:
     commands:
       - python -m pip install --disable-pip-version-check -r backend/requirements.txt pytest httpx
       - PYTHONPATH=backend python -m pytest -q backend/tests
+
+  # Kaniko builds images without mounting the host Docker socket.
+  # dry_run disables registry publishing, but still builds and validates the images.
+  - name: build-frontend-check
+    image: woodpeckerci/plugin-kaniko:2.3.4
+    settings:
+      dry_run: true
+      context: .
+      dockerfile: Dockerfile
+
+  - name: build-backend-check
+    image: woodpeckerci/plugin-kaniko:2.3.4
+    settings:
+      dry_run: true
+      context: backend
+      dockerfile: backend/Dockerfile
