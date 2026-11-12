@@ -29,7 +29,7 @@ resource "aws_ecs_task_definition" "app" {
 
   lifecycle {
     precondition {
-      condition = var.enable_database && trimspace(var.frontend_image_tag) != "" && trimspace(var.backend_image_tag) != ""
+      condition     = var.enable_database && trimspace(var.frontend_image_tag) != "" && trimspace(var.backend_image_tag) != ""
       error_message = "Enable database and provide pre-pushed frontend_image_tag and backend_image_tag before creating ECS application services."
     }
   }
@@ -95,12 +95,12 @@ resource "aws_ecs_task_definition" "notifications" {
       environment = concat([
         { name = "AWS_REGION", value = var.aws_region },
         { name = "SQS_QUEUE_URL", value = aws_sqs_queue.discord.id }
-      ], role == "outbox" ? [
+        ], role == "outbox" ? [
         { name = "RDS_SECRET_ARN", value = aws_db_instance.postgres[0].master_user_secret[0].secret_arn },
         { name = "RDS_HOST", value = aws_db_instance.postgres[0].address },
         { name = "RDS_PORT", value = "5432" },
         { name = "RDS_DATABASE", value = "slicesip" }
-      ] : [
+        ] : [
         for channel in sort(tolist(local.discord_channels)) : {
           name  = "DISCORD_${upper(channel)}_SECRET_ID"
           value = aws_secretsmanager_secret.discord[channel].name
@@ -126,7 +126,17 @@ resource "aws_ecs_service" "app" {
   desired_count   = 1
   launch_type     = "FARGATE"
 
-  deployment_controller { type = "CODE_DEPLOY" }
+  # ECS native blue/green manages the two target groups and shifts traffic.
+  # No CodeDeploy deployment controller, application or deployment group.
+  deployment_controller { type = "ECS" }
+  deployment_configuration {
+    strategy             = "BLUE_GREEN"
+    bake_time_in_minutes = var.blue_green_bake_minutes
+  }
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
   health_check_grace_period_seconds = 120
   network_configuration {
     subnets          = aws_subnet.public[*].id
@@ -137,11 +147,25 @@ resource "aws_ecs_service" "app" {
     target_group_arn = aws_lb_target_group.blue[0].arn
     container_name   = "frontend"
     container_port   = 80
+
+    advanced_configuration {
+      alternate_target_group_arn = aws_lb_target_group.green[0].arn
+      # ALB requires a listener RULE ARN, not an ALB listener ARN.
+      production_listener_rule = aws_lb_listener_rule.production[0].arn
+      role_arn                 = aws_iam_role.ecs_infrastructure[0].arn
+    }
   }
 
-  depends_on = [aws_lb_listener.http, aws_lb_listener.https]
+  # The listener rules and ECS infrastructure-role policy must exist first.
+  depends_on = [
+    aws_lb_listener_rule.production,
+    aws_iam_role_policy_attachment.ecs_infrastructure,
+    aws_iam_role_policy_attachment.task_execution,
+    aws_iam_role_policy.app_database,
+  ]
   lifecycle {
-    # After bootstrap, CodeDeploy (invoked by Ansible) owns running revisions.
+    # CI/Ansible registers and applies new immutable ECR revisions after bootstrap.
+    # Do not have Terraform switch task definitions back during regular plans.
     ignore_changes = [task_definition, load_balancer]
   }
 }
@@ -158,6 +182,13 @@ resource "aws_ecs_service" "notifications" {
     assign_public_ip = true
     security_groups  = [aws_security_group.notifications.id]
   }
+  # Wait until the task execution and notification worker permissions exist.
+  # This also prevents policy teardown before the service is removed.
+  depends_on = [
+    aws_iam_role_policy_attachment.task_execution,
+    aws_iam_role_policy.notifications,
+  ]
+
   # Worker updates are rolling: they do not serve customer HTTP traffic.
   deployment_circuit_breaker {
     enable   = true

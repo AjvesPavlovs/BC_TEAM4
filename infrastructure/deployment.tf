@@ -1,11 +1,11 @@
 # This ALB is chargeable. It is only created once enable_application = true.
 resource "aws_lb" "app" {
-  count              = var.enable_application ? 1 : 0
-  name               = "${var.project_name}-alb"
-  internal           = false
-  load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb.id]
-  subnets            = aws_subnet.public[*].id
+  count                      = var.enable_application ? 1 : 0
+  name                       = "${var.project_name}-alb"
+  internal                   = false
+  load_balancer_type         = "application"
+  security_groups            = [aws_security_group.alb.id]
+  subnets                    = aws_subnet.public[*].id
   enable_deletion_protection = false # Demo teardown
 }
 
@@ -47,8 +47,10 @@ resource "aws_lb_target_group" "green" {
   }
 }
 
-# HTTP is okay ONLY for synthetic testing. Configure ACM for HTTPS before a
-# public demonstration with genuine user-provided data.
+# HTTP is allowed only for synthetic demo traffic. Provide an ACM cert and
+# an owned DNS hostname before handling genuine customer/support information.
+# The default action is intentionally NOT a target group: ECS owns production
+# traffic through the dedicated listener rule below.
 resource "aws_lb_listener" "http" {
   count             = var.enable_application ? 1 : 0
   load_balancer_arn = aws_lb.app[0].arn
@@ -56,7 +58,7 @@ resource "aws_lb_listener" "http" {
   protocol          = "HTTP"
 
   default_action {
-    type = local.enable_https ? "redirect" : "forward"
+    type = local.enable_https ? "redirect" : "fixed-response"
     dynamic "redirect" {
       for_each = local.enable_https ? [1] : []
       content {
@@ -65,10 +67,12 @@ resource "aws_lb_listener" "http" {
         status_code = "HTTP_301"
       }
     }
-    dynamic "forward" {
+    dynamic "fixed_response" {
       for_each = local.enable_https ? [] : [1]
       content {
-        target_group { arn = aws_lb_target_group.blue[0].arn }
+        content_type = "text/plain"
+        message_body = "Not found"
+        status_code  = "404"
       }
     }
   }
@@ -81,58 +85,49 @@ resource "aws_lb_listener" "https" {
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
   certificate_arn   = var.app_certificate_arn
+
   default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.blue[0].arn
+    type = "fixed-response"
+    fixed_response {
+      content_type = "text/plain"
+      message_body = "Not found"
+      status_code  = "404"
+    }
   }
 }
 
-resource "aws_codedeploy_app" "app" {
-  count            = var.enable_application ? 1 : 0
-  name             = "${var.project_name}-ecs"
-  compute_platform = "ECS"
-}
+# ECS native blue/green requires the ALB *rule ARN*. Both target groups must
+# be associated with a production rule; initial weights are blue=100, green=0.
+# With both groups in this rule, a separate publicly reachable test listener
+# is not required. ECS updates the rule's weights on deployment.
+resource "aws_lb_listener_rule" "production" {
+  count        = var.enable_application ? 1 : 0
+  listener_arn = local.enable_https ? aws_lb_listener.https[0].arn : aws_lb_listener.http[0].arn
+  priority     = 100
 
-resource "aws_codedeploy_deployment_group" "app" {
-  count                  = var.enable_application ? 1 : 0
-  app_name               = aws_codedeploy_app.app[0].name
-  deployment_group_name  = "${var.project_name}-blue-green"
-  service_role_arn       = aws_iam_role.codedeploy.arn
-  deployment_config_name = "CodeDeployDefault.ECSAllAtOnce"
-
-  ecs_service {
-    cluster_name = aws_ecs_cluster.main.name
-    service_name = aws_ecs_service.app[0].name
-  }
-
-  deployment_style {
-    deployment_option = "WITH_TRAFFIC_CONTROL"
-    deployment_type   = "BLUE_GREEN"
-  }
-
-  blue_green_deployment_config {
-    deployment_ready_option {
-      action_on_timeout = "CONTINUE_DEPLOYMENT"
-    }
-    terminate_blue_instances_on_deployment_success {
-      action                           = "TERMINATE"
-      termination_wait_time_in_minutes = 5
-    }
-  }
-
-  auto_rollback_configuration {
-    enabled = true
-    events  = ["DEPLOYMENT_FAILURE", "DEPLOYMENT_STOP_ON_REQUEST"]
-  }
-
-  load_balancer_info {
-    target_group_pair_info {
-      prod_traffic_route {
-        listener_arns = [local.enable_https ? aws_lb_listener.https[0].arn : aws_lb_listener.http[0].arn]
+  action {
+    type = "forward"
+    forward {
+      target_group {
+        arn    = aws_lb_target_group.blue[0].arn
+        weight = 100
       }
-      target_group { name = aws_lb_target_group.blue[0].name }
-      target_group { name = aws_lb_target_group.green[0].name }
+      target_group {
+        arn    = aws_lb_target_group.green[0].arn
+        weight = 0
+      }
     }
   }
-  depends_on = [aws_iam_role_policy_attachment.codedeploy]
+
+  condition {
+    path_pattern {
+      values = ["/*"]
+    }
+  }
+
+  lifecycle {
+    # IMPORTANT: ECS owns this action once blue/green starts; Terraform must
+    # not reset its weights to blue after a successful green deployment.
+    ignore_changes = [action]
+  }
 }

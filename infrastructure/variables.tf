@@ -53,3 +53,13 @@ variable "app_certificate_arn" {
   default     = ""
 }
 
+
+variable "blue_green_bake_minutes" {
+  type        = number
+  description = "Time both Fargate revisions remain running after traffic shifts; brief demo rollback window."
+  default     = 5
+  validation {
+    condition     = var.blue_green_bake_minutes >= 1 && var.blue_green_bake_minutes <= 60 && floor(var.blue_green_bake_minutes) == var.blue_green_bake_minutes
+    error_message = "Use a whole-number bake time between 1 and 60 minutes for the bootcamp demo."
+  }
+}

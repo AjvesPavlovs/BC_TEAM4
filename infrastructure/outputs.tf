@@ -36,9 +36,15 @@ output "rds_endpoint" {
 output "app_url" {
   value = var.enable_application ? (local.enable_https ? "https://<your-app-domain>" : "http://${aws_lb.app[0].dns_name}") : "Application not enabled"
 }
-output "codedeploy_app_name" {
-  value = var.enable_application ? aws_codedeploy_app.app[0].name : "Application not enabled"
+output "ecs_service_name" {
+  value = var.enable_application ? aws_ecs_service.app[0].name : "Application not enabled"
 }
-output "codedeploy_group_name" {
-  value = var.enable_application ? aws_codedeploy_deployment_group.app[0].deployment_group_name : "Application not enabled"
+
+output "blue_green_production_rule_arn" {
+  description = "ALB production listener rule managed by ECS native blue/green."
+  value       = var.enable_application ? aws_lb_listener_rule.production[0].arn : "Application not enabled"
+}
+
+output "deployment_strategy" {
+  value = var.enable_application ? "ECS_BLUE_GREEN" : "Application not enabled"
 }

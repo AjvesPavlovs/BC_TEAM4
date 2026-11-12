@@ -1,6 +1,6 @@
 locals {
   ecs_tasks_trust = jsonencode({
-    Version = "2012-10-17"
+    Version   = "2012-10-17"
     Statement = [{ Effect = "Allow", Principal = { Service = "ecs-tasks.amazonaws.com" }, Action = "sts:AssumeRole" }]
   })
   rds_secret_arns = var.enable_database ? [aws_db_instance.postgres[0].master_user_secret[0].secret_arn] : []
@@ -27,8 +27,8 @@ resource "aws_iam_role" "task_app" {
 
 resource "aws_iam_role_policy" "app_database" {
   count = var.enable_database ? 1 : 0
-  name = "read-rds-managed-secret"
-  role = aws_iam_role.task_app.id
+  name  = "read-rds-managed-secret"
+  role  = aws_iam_role.task_app.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -51,8 +51,8 @@ resource "aws_iam_role_policy" "notifications" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow"
-        Action = ["secretsmanager:GetSecretValue"]
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
         Resource = concat(local.rds_secret_arns, [for secret in aws_secretsmanager_secret.discord : secret.arn])
       },
       {
@@ -64,15 +64,23 @@ resource "aws_iam_role_policy" "notifications" {
   })
 }
 
-resource "aws_iam_role" "codedeploy" {
-  name = "${var.project_name}-codedeploy"
+# Native ECS blue/green assumes this role to update ALB listener rules and
+# target groups. It is NOT attached to the instructor-managed CI EC2 instance.
+resource "aws_iam_role" "ecs_infrastructure" {
+  count = var.enable_application ? 1 : 0
+  name  = "${var.project_name}-ecs-load-balancer"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{ Effect = "Allow", Principal = { Service = "codedeploy.amazonaws.com" }, Action = "sts:AssumeRole" }]
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "ecs.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
   })
 }
 
-resource "aws_iam_role_policy_attachment" "codedeploy" {
-  role       = aws_iam_role.codedeploy.name
-  policy_arn = "arn:aws:iam::aws:policy/AWSCodeDeployRoleForECS"
+resource "aws_iam_role_policy_attachment" "ecs_infrastructure" {
+  count      = var.enable_application ? 1 : 0
+  role       = aws_iam_role.ecs_infrastructure[0].name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonECSInfrastructureRolePolicyForLoadBalancers"
 }
