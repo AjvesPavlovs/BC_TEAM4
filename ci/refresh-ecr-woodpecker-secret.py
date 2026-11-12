@@ -18,7 +18,7 @@ REPOSITORY = "reinsonsronalds-design/BC_TEAM4"
 API_TOKEN_FILE = Path("/etc/slice-sip-ci/woodpecker-api-token")
 ECR_REGION = "eu-west-1"
 SECRET_NAME = "ecr_password"
-PLUGIN_IMAGE = "woodpeckerci/plugin-kaniko:2.3.4"
+PLUGIN_IMAGE = "woodpeckerci/plugin-kaniko@sha256:54d5a5869ddb652372979b7714b706826fda33d48ea94c9d54d673be16ab5645"
 
 
 def request(method: str, path: str, api_token: str, payload: dict | None = None):

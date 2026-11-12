@@ -14,7 +14,7 @@ steps:
       - PYTHONPATH=backend python -m pytest -q backend/tests
 
   - name: publish-frontend
-    image: woodpeckerci/plugin-kaniko:2.3.4
+    image: woodpeckerci/plugin-kaniko@sha256:54d5a5869ddb652372979b7714b706826fda33d48ea94c9d54d673be16ab5645
     settings:
       registry: 597765856364.dkr.ecr.eu-west-1.amazonaws.com
       repo: 597765856364.dkr.ecr.eu-west-1.amazonaws.com/slice-sip-frontend
@@ -26,7 +26,7 @@ steps:
         from_secret: ecr_password
 
   - name: publish-backend
-    image: woodpeckerci/plugin-kaniko:2.3.4
+    image: woodpeckerci/plugin-kaniko@sha256:54d5a5869ddb652372979b7714b706826fda33d48ea94c9d54d673be16ab5645
     settings:
       registry: 597765856364.dkr.ecr.eu-west-1.amazonaws.com
       repo: 597765856364.dkr.ecr.eu-west-1.amazonaws.com/slice-sip-backend
