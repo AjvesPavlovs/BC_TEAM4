@@ -51,8 +51,7 @@ pipeline {
                     container=$(docker run -d --rm -p 127.0.0.1::80 "$LOCAL_IMAGE")
                     trap 'docker stop "$container" >/dev/null 2>&1 || true' EXIT
                     address=$(docker port "$container" 80/tcp)
-                    curl --fail --silent --show-error --retry 8 --retry-connrefused \
-                        --retry-delay 2 --max-time 10 "http://$address/" -o /dev/null
+                    curl --fail --silent --show-error --retry 8 --retry-connrefused --retry-all-errors --retry-delay 2 --max-time 10 "http://$address/" -o /dev/null
                 '''
             }
         }
