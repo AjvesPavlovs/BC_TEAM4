@@ -42,8 +42,9 @@ variable "alb_ingress_cidrs" {
 }
 
 variable "task_execution_role_arn" {
-  description = "Existing approved ECS task execution role with CloudWatch Logs access."
+  description = "Approved ECS task execution role with CloudWatch Logs access. Omit for a public image with no AWS secret or logging requirements."
   type        = string
+  default     = null
 }
 
 variable "application_image" {

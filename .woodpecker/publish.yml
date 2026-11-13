@@ -1,0 +1,21 @@
+when:
+  - event: deployment
+    evaluate: 'CI_COMMIT_BRANCH == CI_REPO_DEFAULT_BRANCH && CI_PIPELINE_DEPLOY_TARGET == "registry"'
+
+depends_on: [verify]
+
+steps:
+  - name: publish-tested-image
+    image: docker:28.5.2-cli
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      DOCKERHUB_REPO:
+        from_secret: dockerhub_repo
+      DOCKERHUB_USER:
+        from_secret: dockerhub_user
+      DOCKERHUB_TOKEN:
+        from_secret: dockerhub_token
+    commands:
+      - sh ci/check-image.sh publish
+      - cat .woodpecker-release-image

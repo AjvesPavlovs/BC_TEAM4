@@ -60,5 +60,5 @@ steps:
       FARGATE_VARS:
         from_secret: fargate_vars
     commands:
-      - apk add --no-cache aws-cli curl
+      - apk add --no-cache aws-cli curl jq
       - sh ci/deploy-fargate.sh apply

@@ -11,6 +11,7 @@ test "${CI_PIPELINE_DEPLOY_TARGET:-}" = fargate
 test "${CI_COMMIT_BRANCH:?}" = "${CI_REPO_DEFAULT_BRANCH:?}"
 : "${TF_VAR_aws_account_id:?Expected AWS account ID is required}"
 : "${TF_VAR_aws_region:?AWS region is required}"
+test "$TF_VAR_aws_region" = us-east-1
 : "${AWS_ACCESS_KEY_ID:?Deployment role session is required}"
 : "${AWS_SECRET_ACCESS_KEY:?Deployment role session is required}"
 : "${AWS_SESSION_TOKEN:?Deployment role session is required}"
@@ -23,6 +24,11 @@ if [ "$account" != "$TF_VAR_aws_account_id" ]; then
     echo "Unexpected AWS account: $account" >&2
     exit 1
 fi
+caller=$(aws sts get-caller-identity --query Arn --output text)
+case "$caller" in
+    "arn:aws:sts::$account:assumed-role/SliceSipDeployRole/"*) ;;
+    *) echo "Expected a SliceSipDeployRole session" >&2; exit 1 ;;
+esac
 
 umask 077
 scratch=$(mktemp -d)
@@ -42,6 +48,11 @@ fi
 cd terraform-fargate
 terraform init -reconfigure -input=false -lockfile=readonly -backend-config="$scratch/backend.hcl"
 
+cluster=$(terraform output -raw ecs_cluster_name)
+service=$(terraform output -raw ecs_service_name)
+test "$cluster" = slice-sip-fargate-demo-cluster
+test "$service" = slice-sip-fargate-demo-service
+
 if [ "$mode" = check ]; then
     terraform validate
     exit 0
@@ -50,10 +61,21 @@ fi
 terraform plan -input=false -lock-timeout=5m -var-file="$scratch/environment.tfvars" \
     -var="aws_account_id=$TF_VAR_aws_account_id" -var="aws_region=$TF_VAR_aws_region" \
     -var="application_image=$application_image" -out="$scratch/release.tfplan"
+terraform show -json "$scratch/release.tfplan" > "$scratch/plan.json"
+jq -e '
+        all(.resource_changes[] | select(.mode == "managed");
+            .change.actions == ["no-op"] or
+            (.address == "aws_ecs_task_definition.slice_sip" and
+                (.change.actions == ["create", "delete"] or .change.actions == ["delete", "create"])) or
+            (.address == "aws_ecs_service.slice_sip" and .change.actions == ["update"] and
+                ((.change.before | del(.task_definition)) == (.change.after | del(.task_definition))) and
+                ((.change.after_unknown | del(.task_definition) | [.. | booleans]) | all(. == false))))
+    ' "$scratch/plan.json" >/dev/null || {
+        echo "Release plan contains changes outside the ECS task revision rollout" >&2
+        exit 1
+    }
 terraform apply -input=false -lock-timeout=5m "$scratch/release.tfplan"
 
-cluster=$(terraform output -raw ecs_cluster_name)
-service=$(terraform output -raw ecs_service_name)
 revision=$(terraform output -raw task_definition_arn)
 url=$(terraform output -raw application_url)
 aws ecs wait services-stable --cluster "$cluster" --services "$service"

@@ -35,9 +35,9 @@
     - name: Check the Woodpecker HTTP endpoint
       ansible.builtin.uri:
         url: "http://127.0.0.1:{{ woodpecker_http_port }}/healthz"
-        status_code: 200
+        status_code: 204
         use_proxy: false
       register: woodpecker_http
       retries: 12
       delay: 5
-      until: woodpecker_http.status == 200
+      until: woodpecker_http.status == 204

@@ -25,21 +25,6 @@ resource "aws_security_group" "alb" {
   description = "Allow public HTTP traffic to the Slice and Sip load balancer"
   vpc_id      = var.vpc_id
 
-  ingress {
-    description = "HTTP"
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = var.alb_ingress_cidrs
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
   tags = {
     Name = "${var.name_prefix}-alb-sg"
   }
@@ -68,6 +53,24 @@ resource "aws_security_group" "task" {
   tags = {
     Name = "${var.name_prefix}-task-sg"
   }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "alb_http" {
+  for_each          = toset(var.alb_ingress_cidrs)
+  security_group_id = aws_security_group.alb.id
+  description       = "HTTP"
+  cidr_ipv4         = each.value
+  ip_protocol       = "tcp"
+  from_port         = 80
+  to_port           = 80
+}
+
+resource "aws_vpc_security_group_egress_rule" "alb_to_task" {
+  security_group_id            = aws_security_group.alb.id
+  referenced_security_group_id = aws_security_group.task.id
+  ip_protocol                  = "tcp"
+  from_port                    = 80
+  to_port                      = 80
 }
 
 resource "aws_lb" "slice_sip" {
@@ -129,8 +132,14 @@ resource "aws_ecs_cluster" "slice_sip" {
 }
 
 resource "aws_cloudwatch_log_group" "slice_sip" {
+  count             = var.task_execution_role_arn == null ? 0 : 1
   name              = "/ecs/${var.name_prefix}"
   retention_in_days = 7
+}
+
+moved {
+  from = aws_cloudwatch_log_group.slice_sip
+  to   = aws_cloudwatch_log_group.slice_sip[0]
 }
 
 resource "aws_ecs_task_definition" "slice_sip" {
@@ -147,7 +156,7 @@ resource "aws_ecs_task_definition" "slice_sip" {
   }
 
   container_definitions = jsonencode([
-    {
+    merge({
       name      = "slice-sip"
       image     = var.application_image
       essential = true
@@ -157,15 +166,16 @@ resource "aws_ecs_task_definition" "slice_sip" {
         protocol      = "tcp"
       }]
 
+      }, var.task_execution_role_arn == null ? {} : {
       logConfiguration = {
         logDriver = "awslogs"
         options = {
-          "awslogs-group"         = aws_cloudwatch_log_group.slice_sip.name
+          "awslogs-group"         = aws_cloudwatch_log_group.slice_sip[0].name
           "awslogs-region"        = var.aws_region
           "awslogs-stream-prefix" = "ecs"
         }
       }
-    }
+    })
   ])
 
 }
@@ -196,7 +206,7 @@ resource "aws_ecs_service" "slice_sip" {
     container_port   = 80
   }
 
-  depends_on = [aws_lb_listener.http]
+  depends_on = [aws_lb_listener.http, aws_vpc_security_group_egress_rule.alb_to_task]
 }
 
 output "application_url" {
