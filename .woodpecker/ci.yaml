@@ -12,6 +12,7 @@ steps:
   - name: build-container-image
     image: woodpeckerci/plugin-kaniko:2.3.4
     settings:
+      registry: index.docker.io
       repo: aivisp/slice.sip.app.v1.0
       tags: ${CI_COMMIT_SHA}
       username:
