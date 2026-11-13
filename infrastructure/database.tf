@@ -1,7 +1,7 @@
 resource "aws_db_subnet_group" "database" {
   count      = var.enable_database ? 1 : 0
   name       = "${var.project_name}-db-subnets"
-  subnet_ids = aws_subnet.database[*].id
+  subnet_ids = var.rds_isolated_subnet_ids
 }
 
 resource "aws_db_instance" "postgres" {
@@ -18,7 +18,7 @@ resource "aws_db_instance" "postgres" {
   manage_master_user_password = true
   db_subnet_group_name        = aws_db_subnet_group.database[0].name
   vpc_security_group_ids      = [aws_security_group.database.id]
-  publicly_accessible        = false
+  publicly_accessible         = false
   multi_az                    = false
   backup_retention_period     = 1
   auto_minor_version_upgrade  = true

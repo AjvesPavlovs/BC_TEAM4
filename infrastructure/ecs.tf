@@ -133,14 +133,11 @@ resource "aws_ecs_service" "app" {
     strategy             = "BLUE_GREEN"
     bake_time_in_minutes = var.blue_green_bake_minutes
   }
-  deployment_circuit_breaker {
-    enable   = true
-    rollback = true
-  }
+
   health_check_grace_period_seconds = 120
   network_configuration {
-    subnets          = aws_subnet.public[*].id
-    assign_public_ip = true
+    subnets          = var.ecs_private_subnet_ids
+    assign_public_ip = false
     security_groups  = [aws_security_group.app.id]
   }
   load_balancer {
@@ -178,8 +175,8 @@ resource "aws_ecs_service" "notifications" {
   desired_count   = 1
   launch_type     = "FARGATE"
   network_configuration {
-    subnets          = aws_subnet.public[*].id
-    assign_public_ip = true
+    subnets          = var.ecs_private_subnet_ids
+    assign_public_ip = false
     security_groups  = [aws_security_group.notifications.id]
   }
   # Wait until the task execution and notification worker permissions exist.

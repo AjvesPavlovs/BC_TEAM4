@@ -5,14 +5,14 @@ resource "aws_lb" "app" {
   internal                   = false
   load_balancer_type         = "application"
   security_groups            = [aws_security_group.alb.id]
-  subnets                    = aws_subnet.public[*].id
+  subnets                    = var.alb_public_subnet_ids
   enable_deletion_protection = false # Demo teardown
 }
 
 resource "aws_lb_target_group" "blue" {
   count                = var.enable_application ? 1 : 0
   name                 = "${var.project_name}-blue"
-  vpc_id               = aws_vpc.main.id
+  vpc_id               = data.aws_vpc.bootcamp.id
   protocol             = "HTTP"
   port                 = 80
   target_type          = "ip"
@@ -31,7 +31,7 @@ resource "aws_lb_target_group" "blue" {
 resource "aws_lb_target_group" "green" {
   count                = var.enable_application ? 1 : 0
   name                 = "${var.project_name}-green"
-  vpc_id               = aws_vpc.main.id
+  vpc_id               = data.aws_vpc.bootcamp.id
   protocol             = "HTTP"
   port                 = 80
   target_type          = "ip"

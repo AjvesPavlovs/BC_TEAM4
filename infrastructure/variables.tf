@@ -63,3 +63,41 @@ variable "blue_green_bake_minutes" {
     error_message = "Use a whole-number bake time between 1 and 60 minutes for the bootcamp demo."
   }
 }
+
+# Shared bootcamp VPC inputs. Supply actual approved IDs via local terraform.tfvars
+# (ignored by Git); never create or modify the bootcamp network here.
+variable "existing_vpc_id" {
+  type        = string
+  description = "Instructor-approved existing bootcamp VPC ID (eu-west-1)."
+  validation {
+    condition     = can(regex("^vpc-[0-9a-f]{8,17}$", var.existing_vpc_id))
+    error_message = "Specify a valid existing VPC ID."
+  }
+}
+
+variable "alb_public_subnet_ids" {
+  type        = list(string)
+  description = "Two approved IGW-routed public subnet IDs in distinct AZs for the ALB."
+  validation {
+    condition     = length(var.alb_public_subnet_ids) == 2 && length(distinct(var.alb_public_subnet_ids)) == 2
+    error_message = "Supply two distinct public subnet IDs."
+  }
+}
+
+variable "ecs_private_subnet_ids" {
+  type        = list(string)
+  description = "Two approved NAT-routed private subnet IDs in distinct AZs for Fargate."
+  validation {
+    condition     = length(var.ecs_private_subnet_ids) == 2 && length(distinct(var.ecs_private_subnet_ids)) == 2
+    error_message = "Supply two distinct NAT-routed private subnet IDs."
+  }
+}
+
+variable "rds_isolated_subnet_ids" {
+  type        = list(string)
+  description = "Two approved isolated subnet IDs in distinct AZs for RDS."
+  validation {
+    condition     = length(var.rds_isolated_subnet_ids) == 2 && length(distinct(var.rds_isolated_subnet_ids)) == 2
+    error_message = "Supply two distinct isolated subnet IDs."
+  }
+}
