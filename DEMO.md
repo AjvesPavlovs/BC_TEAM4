@@ -25,8 +25,7 @@ GitHub webhook delivery and an end-to-end Fargate deployment from Woodpecker are
    ```
 
 2. Run the verification command in [README.md](README.md). The Woodpecker CLI can run it on EC2 without a public CI hostname.
-3. Share changes in a pull request targeting `feature/woodpecker-rebuild`, or cherry-pick the relevant commits into the team repository.
-4. For a release to the existing AWS environment, reuse the team S3 bucket and the exact Terraform state key. Moving the source to another branch or repository does not require an infrastructure apply by itself.
+3. For a release to the existing AWS environment, reuse the team S3 bucket and the exact Terraform state key. Moving the source to another branch or repository does not require an infrastructure apply by itself.
 
 ## Presentation bonuses
 
