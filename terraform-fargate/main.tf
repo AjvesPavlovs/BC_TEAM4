@@ -27,6 +27,23 @@ data "aws_subnets" "public" {
   }
 }
 
+data "aws_subnet" "public" {
+  for_each = toset(data.aws_subnets.public.ids)
+  id       = each.value
+}
+
+locals {
+  public_subnets_by_az = {
+    for subnet in data.aws_subnet.public :
+    subnet.availability_zone => subnet.id...
+  }
+
+  selected_public_subnet_ids = [
+    for az in sort(keys(local.public_subnets_by_az)) :
+    sort(local.public_subnets_by_az[az])[0]
+  ]
+}
+
 resource "aws_security_group" "alb" {
   name        = "slice-sip-fargate-alb-sg"
   description = "Allow public HTTP traffic to the Slice and Sip load balancer"
@@ -82,7 +99,14 @@ resource "aws_lb" "slice_sip" {
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
-  subnets            = data.aws_subnets.public.ids
+  subnets            = local.selected_public_subnet_ids
+
+  lifecycle {
+    precondition {
+      condition     = length(local.selected_public_subnet_ids) >= 2
+      error_message = "ALB requires public subnets in at least two Availability Zones."
+    }
+  }
 
   tags = {
     Name = "slice-sip-alb"
@@ -125,38 +149,12 @@ resource "aws_ecs_cluster" "slice_sip" {
   name = "slice-sip-cluster"
 }
 
-resource "aws_iam_role" "ecs_task_execution" {
-  name = "slice-sip-ecs-task-execution-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = "sts:AssumeRole"
-      Principal = {
-        Service = "ecs-tasks.amazonaws.com"
-      }
-    }]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
-  role       = aws_iam_role.ecs_task_execution.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
-
-resource "aws_cloudwatch_log_group" "slice_sip" {
-  name              = "/ecs/slice-sip"
-  retention_in_days = 7
-}
-
 resource "aws_ecs_task_definition" "slice_sip" {
   family                   = "slice-sip"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   cpu                      = "256"
   memory                   = "512"
-  execution_role_arn       = aws_iam_role.ecs_task_execution.arn
 
   container_definitions = jsonencode([
     {
@@ -168,19 +166,8 @@ resource "aws_ecs_task_definition" "slice_sip" {
         containerPort = 80
         protocol      = "tcp"
       }]
-
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          "awslogs-group"         = aws_cloudwatch_log_group.slice_sip.name
-          "awslogs-region"        = "eu-west-1"
-          "awslogs-stream-prefix" = "ecs"
-        }
-      }
     }
   ])
-
-  depends_on = [aws_iam_role_policy_attachment.ecs_task_execution]
 }
 
 resource "aws_ecs_service" "slice_sip" {
@@ -191,7 +178,7 @@ resource "aws_ecs_service" "slice_sip" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = data.aws_subnets.public.ids
+    subnets          = local.selected_public_subnet_ids
     security_groups  = [aws_security_group.task.id]
     assign_public_ip = true
   }
