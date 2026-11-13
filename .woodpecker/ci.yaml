@@ -13,6 +13,7 @@ steps:
     image: woodpeckerci/plugin-kaniko:2.3.4
     settings:
       registry: https://index.docker.io/v1/
+      repo: aivisp/slice.sip.app.v1.0
       destinations:
         - index.docker.io/aivisp/slice.sip.app.v1.0:${CI_COMMIT_SHA}
       username:
