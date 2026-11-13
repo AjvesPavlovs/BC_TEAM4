@@ -114,14 +114,20 @@ def health() -> dict[str, str]:
 
 
 @app.get("/ready")
-def readiness(connection: Any = Depends(get_db_connection)) -> dict[str, str]:
+def readiness() -> dict[str, str]:
+    """Report ready only when PostgreSQL is reachable."""
     try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT 1")
-            cursor.fetchone()
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+                cursor.fetchone()
+
         return {"status": "ready", "database": "connected"}
     except Exception as exc:
-        raise HTTPException(status_code=503, detail="Database is not ready") from exc
+        raise HTTPException(
+            status_code=503,
+            detail="Database is not ready",
+        ) from exc
 
 
 @app.post("/api/orders", status_code=status.HTTP_201_CREATED)
