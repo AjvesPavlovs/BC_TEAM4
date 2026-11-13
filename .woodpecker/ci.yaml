@@ -16,6 +16,7 @@ steps:
       repo: aivisp/slice.sip.app.v1.0
       destinations:
         - index.docker.io/aivisp/slice.sip.app.v1.0:${CI_COMMIT_SHA}
+        - index.docker.io/aivisp/slice.sip.app.v1.0:latest
       username:
         from_secret: dockerhub_user
       password:
