@@ -1,5 +1,5 @@
 when:
-  - event: [push, manual]
+  - event: push
     branch: feature/woodpecker-ci
 
 steps:
@@ -13,5 +13,8 @@ steps:
     image: woodpeckerci/plugin-kaniko:2.3.4
     settings:
       repo: aivisp/slice.sip.app.v1.0
-      tags: test
-      dry_run: true
+      tags: ${CI_COMMIT_SHA}
+      username:
+        from_secret: dockerhub_user
+      password:
+        from_secret: dockerhub_token
