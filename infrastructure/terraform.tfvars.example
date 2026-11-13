@@ -22,5 +22,12 @@ enable_application = false
 # Shared bootcamp networking (use only after instructor approval).
 existing_vpc_id       = "vpc-04b6091923e283784"
 alb_public_subnet_ids  = ["subnet-09499899162c048f7", "subnet-0085786c1374a372c"]
-ecs_private_subnet_ids = ["subnet-0d967012a16e6162", "subnet-044a7aac53c2aa425"]
+ecs_private_subnet_ids = ["subnet-0d967012a216e6162", "subnet-044a7aac53c2aa425"]
 rds_isolated_subnet_ids = ["subnet-0f680f23bd1732c26", "subnet-0ffb7e6df0653fa22"]
+
+# Phase 6K: reference IAM roles provided by bootcamp instructors (NOT AWS keys).
+existing_ecs_execution_role_name = "ecsTaskExecutionRole"
+# Set these only after the instructor creates each role and confirms permissions:
+# app_task_role_arn           = "arn:aws:iam::<ACCOUNT_ID>:role/<APP_ROLE>"
+# notifications_task_role_arn = "arn:aws:iam::<ACCOUNT_ID>:role/<WORKER_ROLE>"
+# ecs_infrastructure_role_arn = "arn:aws:iam::<ACCOUNT_ID>:role/<BLUE_GREEN_ROLE>"

@@ -101,3 +101,42 @@ variable "rds_isolated_subnet_ids" {
     error_message = "Supply two distinct isolated subnet IDs."
   }
 }
+
+# Phase 6K: execution role is pre-existing and read-only.
+variable "existing_ecs_execution_role_name" {
+  type        = string
+  description = "Approved existing ECS execution role, usually ecsTaskExecutionRole."
+  default     = "ecsTaskExecutionRole"
+}
+
+# Keep these empty until the instructor provides the actual ARN. A preview with
+# enable_application=false still works; enabling it fails closed until set.
+variable "app_task_role_arn" {
+  type        = string
+  description = "Instructor-managed task role for the app's RDS secret reads."
+  default     = ""
+  validation {
+    condition     = var.app_task_role_arn == "" || can(regex("^arn:aws:iam::[0-9]{12}:role/.+", var.app_task_role_arn))
+    error_message = "Use an IAM role ARN or leave blank while awaiting instructor approval."
+  }
+}
+
+variable "notifications_task_role_arn" {
+  type        = string
+  description = "Instructor-managed task role for SQS and notification secrets."
+  default     = ""
+  validation {
+    condition     = var.notifications_task_role_arn == "" || can(regex("^arn:aws:iam::[0-9]{12}:role/.+", var.notifications_task_role_arn))
+    error_message = "Use an IAM role ARN or leave blank while awaiting instructor approval."
+  }
+}
+
+variable "ecs_infrastructure_role_arn" {
+  type        = string
+  description = "Instructor-managed ECS infrastructure role for blue/green ALB traffic changes."
+  default     = ""
+  validation {
+    condition     = var.ecs_infrastructure_role_arn == "" || can(regex("^arn:aws:iam::[0-9]{12}:role/.+", var.ecs_infrastructure_role_arn))
+    error_message = "Use an IAM role ARN or leave blank while awaiting instructor approval."
+  }
+}

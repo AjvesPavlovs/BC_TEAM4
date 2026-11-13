@@ -24,13 +24,17 @@ resource "aws_ecs_task_definition" "app" {
   network_mode             = "awsvpc"
   cpu                      = "512"
   memory                   = "1024"
-  execution_role_arn       = aws_iam_role.task_execution.arn
-  task_role_arn            = aws_iam_role.task_app.arn
+  execution_role_arn       = data.aws_iam_role.task_execution[0].arn
+  task_role_arn            = var.app_task_role_arn
 
   lifecycle {
     precondition {
       condition     = var.enable_database && trimspace(var.frontend_image_tag) != "" && trimspace(var.backend_image_tag) != ""
       error_message = "Enable database and provide pre-pushed frontend_image_tag and backend_image_tag before creating ECS application services."
+    }
+    precondition {
+      condition     = trimspace(var.app_task_role_arn) != ""
+      error_message = "Application enabled: provide the approved instructor-managed app_task_role_arn."
     }
   }
 
@@ -83,8 +87,15 @@ resource "aws_ecs_task_definition" "notifications" {
   network_mode             = "awsvpc"
   cpu                      = "512"
   memory                   = "1024"
-  execution_role_arn       = aws_iam_role.task_execution.arn
-  task_role_arn            = aws_iam_role.task_notifications.arn
+  execution_role_arn       = data.aws_iam_role.task_execution[0].arn
+  task_role_arn            = var.notifications_task_role_arn
+
+  lifecycle {
+    precondition {
+      condition     = trimspace(var.notifications_task_role_arn) != ""
+      error_message = "Application enabled: provide the approved instructor-managed notifications_task_role_arn."
+    }
+  }
 
   container_definitions = jsonencode([
     for role in ["outbox", "discord"] : {
@@ -149,18 +160,19 @@ resource "aws_ecs_service" "app" {
       alternate_target_group_arn = aws_lb_target_group.green[0].arn
       # ALB requires a listener RULE ARN, not an ALB listener ARN.
       production_listener_rule = aws_lb_listener_rule.production[0].arn
-      role_arn                 = aws_iam_role.ecs_infrastructure[0].arn
+      role_arn                 = var.ecs_infrastructure_role_arn
     }
   }
 
-  # The listener rules and ECS infrastructure-role policy must exist first.
-  depends_on = [
-    aws_lb_listener_rule.production,
-    aws_iam_role_policy_attachment.ecs_infrastructure,
-    aws_iam_role_policy_attachment.task_execution,
-    aws_iam_role_policy.app_database,
-  ]
+  # IAM roles and their policies are instructor-managed, not Terraform resources.
+  # The ECS task definition references the pre-existing execution and task roles.
+  depends_on = [aws_lb_listener_rule.production]
+
   lifecycle {
+    precondition {
+      condition     = trimspace(var.ecs_infrastructure_role_arn) != ""
+      error_message = "Application enabled: provide the approved instructor-managed ecs_infrastructure_role_arn."
+    }
     # CI/Ansible registers and applies new immutable ECR revisions after bootstrap.
     # Do not have Terraform switch task definitions back during regular plans.
     ignore_changes = [task_definition, load_balancer]
@@ -179,12 +191,8 @@ resource "aws_ecs_service" "notifications" {
     assign_public_ip = false
     security_groups  = [aws_security_group.notifications.id]
   }
-  # Wait until the task execution and notification worker permissions exist.
-  # This also prevents policy teardown before the service is removed.
-  depends_on = [
-    aws_iam_role_policy_attachment.task_execution,
-    aws_iam_role_policy.notifications,
-  ]
+  # Instructor-managed IAM policies must be ready before this service is created.
+  # No Terraform IAM-policy dependency remains.
 
   # Worker updates are rolling: they do not serve customer HTTP traffic.
   deployment_circuit_breaker {
