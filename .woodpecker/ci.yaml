@@ -6,6 +6,12 @@ steps:
   - name: check-project-files
     image: alpine:3.21
     commands:
-      - echo "Woodpecker pipeline is running"
       - test -f Dockerfile
       - test -f index.html
+
+  - name: build-container-image
+    image: woodpeckerci/plugin-kaniko:2.3.4
+    settings:
+      repo: aivisp/slice.sip.app.v1.0
+      tags: test
+      dry_run: true
