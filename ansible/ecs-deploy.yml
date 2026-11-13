@@ -33,6 +33,10 @@
               '--tag', image_tag]
               + (['--include-worker'] if (deploy_worker | bool) else [])
               + (['--deploy'] if (deploy_enabled | bool) else []) }}
+      environment:
+        # Use the updated AWS CLI for ECS native blue/green API support.
+        # Applies to this task only; does not change the system default CLI.
+        PATH: /opt/slice-sip/bin:/usr/local/bin:/usr/bin:/bin
       register: ecs_deployment_result
       changed_when: (deploy_enabled | bool) and ("Requested ECS deployment:" in ecs_deployment_result.stdout)
 
